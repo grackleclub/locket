@@ -7,7 +7,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"testing"
 )
+
+// ClientSigningPubkey is the environment variable name for
+// the client's signing public key.
+var ClientSigningPubkey = "LOCKET_CLIENT_PUBKEY_SIGNING"
 
 type Client struct {
 	serverAddress     string // server URL
@@ -33,6 +39,13 @@ func NewClient(serverURL string) (*Client, error) {
 	err = client.fetchServerPubkey()
 	if err != nil || client.serverPubkey == "" {
 		return nil, fmt.Errorf("failed to fetch server pubkey: %w", err)
+	}
+	// TODO use another method to distribute?
+	if testing.Testing() {
+		err = os.Setenv(ClientSigningPubkey, client.keyEd25519Public)
+		if err != nil {
+			return nil, fmt.Errorf("setenv: %w", err)
+		}
 	}
 	return &client, nil
 }

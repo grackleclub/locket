@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 )
 
 type Server struct {
@@ -34,7 +35,8 @@ func NewServer() (*Server, error) {
 		"foo": "bigsecret",
 		"bar": "supersecret",
 	}
-	// TODO locket.registry = []service{}
+
+	// TODO load registry
 
 	return &server, nil
 }
@@ -72,7 +74,26 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 		}
 		slog.Debug("decrypted payload", "payload", payload)
-		// TOOD verify signature
+		// TOOD load another way
+		s.registry = []service{
+			{
+				name:       "service1",
+				IPs:        []string{"localhost"},
+				secrets:    []string{"foo"},
+				PubSignKey: os.Getenv(ClientSigningPubkey),
+			},
+		}
+		// verify signature
+		match, err := verifyEd25519(request.ClientPubKey, request.Payload, request.PayloadSignature)
+		if err != nil {
+			slog.Error("verify signature", "error", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+		}
+		if !match {
+			slog.Error("signature mismatch")
+			http.Error(w, "forbidden", http.StatusForbidden)
+		}
+
 		// TODO ensure secret is registered to service just verified
 		// ecrypt secret with client public key
 		// return
