@@ -1,6 +1,6 @@
 # 🔐 locket ❤️
 
-[![Go - Test](https://github.com/grackleclub/locket/actions/workflows/go.yml/badge.svg)](https://github.com/grackleclub/locket/actions/workflows/go.yml)
+[![Go - Test](https://github.com/grackleclub/locket/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/grackleclub/locket/actions/workflows/go.yml)
 
 secrets management service
 
