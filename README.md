@@ -1,4 +1,4 @@
-# locket
+# 🔐 locket ❤️
 
 secrets management service
 
