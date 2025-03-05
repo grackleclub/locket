@@ -23,6 +23,10 @@ type service struct {
 	PubSignKey string
 }
 
+type kvResponse struct {
+	Payload string `json:"payload"`
+}
+
 func NewServer() (*Server, error) {
 	var server Server
 	var err error
@@ -102,7 +106,7 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			slog.Error("signature mismatch")
 			http.Error(w, "forbidden", http.StatusForbidden)
 		} else {
-			slog.Info("signature verified")
+			slog.Debug("signature verified")
 		}
 		value, ok := s.secrets[payload]
 		if !ok {
@@ -112,7 +116,7 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		ecryptedSecret, err := encryptRSA(request.ClientPubKey, value)
 		if err != nil {
 			slog.Error("encrypt secret", "error", err)
-			http.Error(w, "bad request", http.StatusBadRequest)
+			http.Error(w, "server error", http.StatusInternalServerError)
 		}
 		response := kvResponse{
 			Payload: ecryptedSecret,

@@ -19,7 +19,7 @@ func TestMisc(t *testing.T) {
 	if !ok {
 		panic(fmt.Errorf("required %q not set", envTokenName))
 	}
-	slog.Info("found token", "name", envTokenName)
+	slog.Debug("found token", "name", envTokenName)
 
 	// Authenticates with your service account token and connects to 1Password.
 	client, err := onepassword.NewClient(ctx,
@@ -49,7 +49,7 @@ func TestMisc(t *testing.T) {
 		})
 		fmt.Printf("%s %s\n", vlt.ID, vlt.Title)
 	}
-	// slog.Info("vaults", "count", len(vaults), "items", vaults)
+	// slog.Debug("vaults", "count", len(vaults), "items", vaults)
 
 	for _, vault := range vaults {
 		items, err := client.ItemsAPI.ListAll(ctx, vault.ID)

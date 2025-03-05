@@ -11,10 +11,19 @@ import (
 	"testing"
 )
 
-// ClientSigningPubkey is the environment variable name for
-// the client's signing public key.
-var ClientSigningPubkey = "LOCKET_CLIENT_PUBKEY_SIGNING"
+var (
+	// ClientSigningPubkey is the environment variable name for
+	// the client's signing public key. The sever should already have this
+	// via side channel before the client makes a request, and uses this
+	// to verify the authenticity of the requestor.
+	// In testing, this is set to the client's signing public key.
+	ClientSigningPubkey = "LOCKET_CLIENT_PUBKEY_SIGNING"
+)
 
+// Client makes reqeuests to a locket server, and must know the server address.
+// serverPubkey is the server's encryption public key, and will be fetched
+// on creation of NewClient().
+// Rsa and Ed25519 key pairs are also generated on creation of NewClient().
 type Client struct {
 	serverAddress     string // server URL
 	serverPubkey      string // server encryption public key
@@ -24,12 +33,15 @@ type Client struct {
 	keyEd25519Private string // signing private key
 }
 
+// kvRequest is the request format for the client to send to the server.
 type kvRequest struct {
 	Payload          string `json:"payload"`       // key for which cilent requests a value
-	ClientPubKey     string `json:"client_pubkey"` // public key used to encrypt payload
 	PayloadSignature string `json:"signature"`     // ed25519 signature of payload
+	ClientPubKey     string `json:"client_pubkey"` // public key used to encrypt payload
 }
 
+// NewClient creates a new client, fetches the server's encryption public key,
+// and generates RSA and Ed25519 key pairs for future requests.
 func NewClient(serverURL string) (*Client, error) {
 	var client Client
 	var err error
@@ -56,7 +68,7 @@ func NewClient(serverURL string) (*Client, error) {
 	return &client, nil
 }
 
-// fetchServerPubkey fetches the server's encryption public key
+// fetchServerPubkey fetches the server's encryption public key.
 func (c *Client) fetchServerPubkey() error {
 	slog.Debug("fetching server encryption pubkey", "url", c.serverAddress)
 	req, err := http.NewRequest(http.MethodGet, c.serverAddress, nil)
@@ -79,6 +91,9 @@ func (c *Client) fetchServerPubkey() error {
 	return nil
 }
 
+// fetchSecret produces an ecrypted and signed request to the server,
+// containing the name of the secret to fetch and the client's own public key
+// (to be used for encrypting the response).
 func (c *Client) fetchSecret(name string) (string, error) {
 	slog.Debug("fetching secret", "name", name)
 	var request kvRequest
@@ -98,9 +113,16 @@ func (c *Client) fetchSecret(name string) (string, error) {
 		return "", fmt.Errorf("marshal: %w", err)
 	}
 
-	url := c.serverAddress + "/kv"
-	slog.Debug("sending request", "name", name, "payload", string(jsonRequest), "url", url)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(jsonRequest))
+	slog.Debug("sending request",
+		"name", name,
+		"payload", string(jsonRequest),
+		"url", c.serverAddress,
+	)
+	req, err := http.NewRequest(
+		http.MethodPost,
+		c.serverAddress,
+		bytes.NewReader(jsonRequest),
+	)
 	if err != nil {
 		return "", fmt.Errorf("new request: %w", err)
 	}
@@ -118,11 +140,10 @@ func (c *Client) fetchSecret(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decode response: %w", err)
 	}
-
 	plaintext, err := decryptRSA(c.keyRsaPrivate, response.Payload)
 	if err != nil {
 		return "", fmt.Errorf("decrypt: %w", err)
 	}
-	slog.Debug("fetched secret", "name", name, "value_len", len(plaintext))
+	slog.Debug("fetched secret", "name", name)
 	return plaintext, nil
 }
