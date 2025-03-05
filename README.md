@@ -1,8 +1,10 @@
 # 🔐 locket ❤️
 
+[![Go - Test](https://github.com/grackleclub/locket/actions/workflows/go.yml/badge.svg)](https://github.com/grackleclub/locket/actions/workflows/go.yml)
+
 secrets management service
 
-## lifecycle
+## design outline
 1. init `secrets` server
     - read secrets
         - prod: external source
