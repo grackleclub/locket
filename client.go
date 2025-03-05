@@ -24,6 +24,12 @@ type Client struct {
 	keyEd25519Private string // signing private key
 }
 
+type kvRequest struct {
+	Payload          string `json:"payload"`       // key for which cilent requests a value
+	ClientPubKey     string `json:"client_pubkey"` // public key used to encrypt payload
+	PayloadSignature string `json:"signature"`     // ed25519 signature of payload
+}
+
 func NewClient(serverURL string) (*Client, error) {
 	var client Client
 	var err error
@@ -82,7 +88,7 @@ func (c *Client) fetchSecret(name string) (string, error) {
 	}
 	request.Payload = cypher
 	request.ClientPubKey = c.keyRsaPublic
-	sig, err := signEd25519(c.keyEd25519Private, cypher)
+	sig, err := signEd25519(c.keyEd25519Private, name)
 	if err != nil {
 		return "", fmt.Errorf("sign: %w", err)
 	}

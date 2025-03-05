@@ -83,16 +83,46 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 				PubSignKey: os.Getenv(ClientSigningPubkey),
 			},
 		}
+		// TODO require IPs
 		// verify signature
-		match, err := verifyEd25519(request.ClientPubKey, request.Payload, request.PayloadSignature)
-		if err != nil {
-			slog.Error("verify signature", "error", err)
-			http.Error(w, "bad request", http.StatusBadRequest)
+		var matches bool
+		slog.Info("verifying signature", "key", s.registry[0].PubSignKey)
+		for _, svc := range s.registry {
+			match, err := verifyEd25519(svc.PubSignKey, payload, request.PayloadSignature)
+			if err != nil {
+				slog.Error("verify signature", "error", err)
+				http.Error(w, "bad request", http.StatusBadRequest)
+			}
+			if match {
+				matches = true
+				break
+			}
 		}
-		if !match {
+		if !matches {
 			slog.Error("signature mismatch")
 			http.Error(w, "forbidden", http.StatusForbidden)
+		} else {
+			slog.Info("signature verified")
 		}
+		value, ok := s.secrets[payload]
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		ecryptedSecret, err := encryptRSA(request.ClientPubKey, value)
+		if err != nil {
+			slog.Error("encrypt secret", "error", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+		}
+		response := kvResponse{
+			Payload: ecryptedSecret,
+		}
+		err = json.NewEncoder(w).Encode(response)
+		if err != nil {
+			slog.Error("encode response", "error", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+		}
+		w.Header().Set("Content-Type", "application/json")
 
 		// TODO ensure secret is registered to service just verified
 		// ecrypt secret with client public key
