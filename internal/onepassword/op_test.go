@@ -1,14 +1,23 @@
+// build +integration
 package onepassword
 
-import "testing"
+import (
+	"context"
+	"testing"
 
-func TestOp(t *testing.T) {
-	var o = item{
-		vault:   "my-vault",
-		item:    "my-item",
-		section: "my-section",
-		field:   "my-field",
-		otp:     true,
+	"github.com/stretchr/testify/require"
+)
+
+func TestLoadVaults(t *testing.T) {
+	ctx := context.Background()
+	v, err := Vaults(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, v)
+	require.NotEmpty(t, v)
+	for _, vault := range v {
+		t.Logf("vault: %s", vault.Name)
+		for _, v := range vault.Secrets {
+			t.Logf("  %s=%s", v.Title, v.Value)
+		}
 	}
-	t.Logf("op: %s", o.string())
 }

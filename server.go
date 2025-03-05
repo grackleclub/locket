@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 )
 
 type Server struct {
@@ -82,12 +83,37 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		s.registry = []service{
 			{
 				name:       "service1",
-				IPs:        []string{"localhost"},
+				IPs:        []string{"127.0.0.1"},
 				secrets:    []string{"foo"},
 				PubSignKey: os.Getenv(ClientSigningPubkey),
 			},
 		}
-		// TODO require IPs
+		// require IP to be in registry
+		var requestingServiceName string
+		var allowedIP bool
+		for _, svc := range s.registry {
+			for _, ip := range svc.IPs {
+				parts := strings.Split(ip, ":")
+				requestIP := r.RemoteAddr
+				if len(parts) > 0 {
+					requestIP = parts[0]
+				}
+				// slog.Debug("checking IP", "ip", parts[0])
+				if ip == requestIP {
+					requestingServiceName = svc.name
+					slog.Debug("found service with allowed IP", "name", svc.name, "ip", ip)
+					allowedIP = true
+					break
+				}
+			}
+		}
+		if !allowedIP {
+			slog.Error("IP not allowed", "ip", r.RemoteAddr)
+			http.Error(w, "forbidden", http.StatusForbidden)
+		} else {
+			slog.Debug("IP allowed", "ip", r.RemoteAddr, "service", requestingServiceName)
+		}
+
 		// verify signature
 		var matches bool
 		slog.Info("verifying signature", "key", s.registry[0].PubSignKey)
@@ -113,6 +139,7 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
+		// TODO ensure secret is registered to service just verified
 		ecryptedSecret, err := encryptRSA(request.ClientPubKey, value)
 		if err != nil {
 			slog.Error("encrypt secret", "error", err)
@@ -127,10 +154,6 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 		}
 		w.Header().Set("Content-Type", "application/json")
-
-		// TODO ensure secret is registered to service just verified
-		// ecrypt secret with client public key
-		// return
 
 		return
 	default:

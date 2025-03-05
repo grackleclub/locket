@@ -1,6 +1,6 @@
-# secrets
+# locket
 
-secrets management
+secrets management service
 
 ## lifecycle
 1. init `secrets` server
@@ -32,6 +32,5 @@ secrets management
 ## endpoints
 ### server
 route | method(s) | purpose
---- | --- | ---
-`/` | `GET` | fetch public key
-`/` | `POST` | fetch key/values
+`/` | `GET` | provide server public key
+`/` | `POST` | make encrypted signed request for values
