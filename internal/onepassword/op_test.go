@@ -1,4 +1,4 @@
-package locket
+package onepassword
 
 import "testing"
 
