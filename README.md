@@ -32,5 +32,6 @@ secrets management
 ## endpoints
 ### server
 route | method(s) | purpose
-`/public` | GET | provide server public key
-`/kv` | `GET` `POST` `PUT` `DELETE` | fetch key/values
+--- | --- | ---
+`/` | `GET` | fetch public key
+`/` | `POST` | fetch key/values
