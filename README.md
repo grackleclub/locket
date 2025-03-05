@@ -32,7 +32,7 @@ secrets management service
  
 
 ## endpoints
-### server
 route | method(s) | purpose
+--- | --- | ---
 `/` | `GET` | provide server public key
 `/` | `POST` | make encrypted signed request for values
