@@ -1,4 +1,5 @@
-// build +integration
+//go:build integration
+
 package onepassword
 
 import (
