@@ -28,22 +28,71 @@ type kvResponse struct {
 	Payload string `json:"payload"`
 }
 
-func NewServer() (*Server, error) {
+// source represents a valid source for secrets.
+// examples include:
+//   - file: e.g. *.env files
+//   - env: environment variables
+//   - 1password: 1password vault
+type source string
+
+const (
+	sourceEnv  source = "env"
+	sourceFile source = "file"
+	sourceOp   source = "1password"
+)
+
+var sources = []source{
+	sourceEnv,
+	sourceFile,
+	sourceOp,
+}
+
+type serverOpts struct {
+	source         source
+	sourceFilePath string // only required if source=file
+}
+
+func NewServer(opts serverOpts) (*Server, error) {
 	var server Server
 	var err error
 	server.keyRsaPublic, server.keyRsaPrivate, err = newPairRSA(2048)
 	if err != nil {
 		return nil, fmt.Errorf("generate key pair: %w", err)
 	}
+	// TODO load register of allowed client keys
 
-	server.secrets = map[string]string{
-		"foo": "bigsecret",
-		"bar": "supersecret",
+	var testSource source = "test"
+	switch opts.source {
+	case sourceEnv:
+		secrets, err := loadEnv()
+		if err != nil {
+			return nil, fmt.Errorf("load env: %w", err)
+		}
+		server.secrets = secrets
+		return &server, nil
+	case sourceFile:
+		if opts.sourceFilePath == "" {
+			return nil, fmt.Errorf("filepath required with source=file")
+		}
+		secrets, err := loadFile(opts.sourceFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("load file: %w", err)
+		}
+		server.secrets = secrets
+		return &server, nil
+	case sourceOp:
+		return nil, fmt.Errorf("not implemented")
+	case testSource:
+		// TODO temp
+		server.secrets = map[string]string{
+			"foo": "bigsecret",
+			"bar": "supersecret",
+		}
+		return &server, nil
+
+	default:
+		return nil, fmt.Errorf("invalid source, expected: %v", sources)
 	}
-
-	// TODO load registry
-
-	return &server, nil
 }
 
 func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {

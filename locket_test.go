@@ -9,7 +9,11 @@ import (
 )
 
 func TestE2E(t *testing.T) {
-	server, err := NewServer()
+	opts := serverOpts{
+		source:         sourceFile,
+		sourceFilePath: testEnvFile,
+	}
+	server, err := NewServer(opts)
 	require.NoError(t, err)
 
 	handler := httptest.NewServer(http.HandlerFunc(server.Handler))
@@ -21,7 +25,7 @@ func TestE2E(t *testing.T) {
 	err = client.fetchServerPubkey()
 	require.NoError(t, err)
 
-	resp, err := client.fetchSecret("foo")
+	resp, err := client.fetchSecret("FOO")
 	require.NoError(t, err)
 	t.Logf("secret: %s", resp)
 }
