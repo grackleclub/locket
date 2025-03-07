@@ -1,0 +1,6 @@
+- name: server-1234
+  ip: 192.168.1.1
+  public_key: |
+    --- foo ---------
+    asdfaslkfasasdfas
+    --- end ---------

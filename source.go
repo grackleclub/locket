@@ -8,9 +8,39 @@ import (
 	"strings"
 )
 
-func loadFile(filepath string) (map[string]string, error) {
+// source represents a valid source for secrets.
+// examples include:
+//   - dotenv: e.g. *.env files
+//   - env: environment variables
+//   - 1password: 1password vault
+type source interface {
+	load() (map[string]string, error)
+}
+
+type env struct{}
+
+// load k=v pairs from local environment
+func (e env) load() (map[string]string, error) {
+	env := os.Environ()
+	secrets := make(map[string]string)
+	for _, e := range env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		secrets[parts[0]] = parts[1]
+	}
+	return secrets, nil
+}
+
+type dotenv struct {
+	path string
+}
+
+// load k=v pairs from a .env file, ignoring any #comments
+func (d dotenv) load() (map[string]string, error) {
 	delimiter := "="
-	f, err := os.Open(filepath)
+	f, err := os.Open(d.path)
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
 	}
@@ -36,7 +66,7 @@ func loadFile(filepath string) (map[string]string, error) {
 
 		parts := strings.SplitN(line, delimiter, 2)
 		if len(parts) != 2 {
-			slog.Debug("skipping invalid line", "line_num", lineNum, "file", filepath)
+			slog.Debug("skipping invalid line", "line_num", lineNum, "file", d.path)
 			return nil, fmt.Errorf("invalid line: %s", line)
 		}
 		// strip leading and trailing quotes
@@ -51,18 +81,5 @@ func loadFile(filepath string) (map[string]string, error) {
 		return nil, fmt.Errorf("scan file: %w", err)
 	}
 
-	return secrets, nil
-}
-
-func loadEnv() (map[string]string, error) {
-	env := os.Environ()
-	secrets := make(map[string]string)
-	for _, e := range env {
-		parts := strings.SplitN(e, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		secrets[parts[0]] = parts[1]
-	}
 	return secrets, nil
 }

@@ -9,8 +9,9 @@ import (
 	"strings"
 )
 
+var DefaultBitRSA = 2048 // default bit size for RSA keys
+
 type Server struct {
-	// source   source            // where serets originate
 	secrets       map[string]string // secret k/v pairs
 	registry      []service         // registered services
 	keyRsaPublic  string            // encryption public key
@@ -28,70 +29,34 @@ type kvResponse struct {
 	Payload string `json:"payload"`
 }
 
-// source represents a valid source for secrets.
-// examples include:
-//   - file: e.g. *.env files
-//   - env: environment variables
-//   - 1password: 1password vault
-type source string
-
-const (
-	sourceEnv  source = "env"
-	sourceFile source = "file"
-	sourceOp   source = "1password"
-)
-
-var sources = []source{
-	sourceEnv,
-	sourceFile,
-	sourceOp,
-}
-
-type serverOpts struct {
-	source         source
-	sourceFilePath string // only required if source=file
-}
-
-func NewServer(opts serverOpts) (*Server, error) {
+func NewServer(opts source) (*Server, error) {
 	var server Server
 	var err error
-	server.keyRsaPublic, server.keyRsaPrivate, err = newPairRSA(2048)
+	server.keyRsaPublic, server.keyRsaPrivate, err = newPairRSA(DefaultBitRSA)
 	if err != nil {
 		return nil, fmt.Errorf("generate key pair: %w", err)
 	}
 	// TODO load register of allowed client keys
-
-	var testSource source = "test"
-	switch opts.source {
-	case sourceEnv:
-		secrets, err := loadEnv()
+	switch opts := opts.(type) {
+	case env:
+		secrets, err := opts.load()
 		if err != nil {
 			return nil, fmt.Errorf("load env: %w", err)
 		}
 		server.secrets = secrets
 		return &server, nil
-	case sourceFile:
-		if opts.sourceFilePath == "" {
-			return nil, fmt.Errorf("filepath required with source=file")
+	case dotenv:
+		if opts.path == "" {
+			return nil, fmt.Errorf("path required to .env file")
 		}
-		secrets, err := loadFile(opts.sourceFilePath)
+		secrets, err := opts.load()
 		if err != nil {
-			return nil, fmt.Errorf("load file: %w", err)
+			return nil, fmt.Errorf("load .env file: %w", err)
 		}
 		server.secrets = secrets
 		return &server, nil
-	case sourceOp:
-		return nil, fmt.Errorf("not implemented")
-	case testSource:
-		// TODO temp
-		server.secrets = map[string]string{
-			"foo": "bigsecret",
-			"bar": "supersecret",
-		}
-		return &server, nil
-
 	default:
-		return nil, fmt.Errorf("invalid source, expected: %v", sources)
+		return nil, fmt.Errorf("invalid source")
 	}
 }
 
