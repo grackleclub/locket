@@ -1,5 +1,5 @@
 - name: foo-1
   keypub: |
     -----BEGIN ED25519 PUBLIC KEY-----
-    B8rVELBX75bWUm8z8ykw6nZQVwp3fqbZjZk9yMRTSDw=
+    VaQmmTqLWYVly7P9hCft662J0QvKxGmpA6UV13XQox0=
     -----END ED25519 PUBLIC KEY-----

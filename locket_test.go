@@ -11,10 +11,10 @@ import (
 
 func TestE2E(t *testing.T) {
 	// create signing keys for the soon to be client
-	pub, priv, err := newPairEd25519()
+	pub, priv, err := NewPairEd25519()
 	require.NoError(t, err)
 
-	var reg = []regEntry{{
+	var reg = []RegEntry{{
 		Name:   "foo-1",
 		KeyPub: pub,
 	}}

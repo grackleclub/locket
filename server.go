@@ -10,16 +10,9 @@ import (
 
 type Server struct {
 	secrets       map[string]string // secret k/v pairs
-	registry      []regEntry        // registered services
+	registry      []RegEntry        // registered services
 	keyRsaPublic  string            // encryption public key
 	keyRsaPrivate string            // encryption private key
-}
-
-type service struct {
-	name       string
-	IPs        []string
-	secrets    []string
-	PubSignKey string
 }
 
 type kvResponse struct {
@@ -118,11 +111,14 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		_, cidr, err := net.ParseCIDR(Defaults.AllowCird)
 		if err != nil {
 			slog.Error("parse CIDR", "error", err)
-			http.Error(w, "server error", http.StatusInternalServerError)
+			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 		if !cidr.Contains(clientIP) {
-			slog.Warn("IP rejected", "ip", r.RemoteAddr)
+			slog.Warn("IP rejected",
+				"ip", r.RemoteAddr,
+				"allowCIDR", Defaults.AllowCird,
+			)
 			http.Error(w, "forbidden", http.StatusForbidden)
 		} else {
 			slog.Debug("IP allowed", "ip", r.RemoteAddr)
@@ -153,7 +149,9 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
-		// TODO ensure secret is registered to service just verified
+		// TODO for enhanced security through segmentation
+		//  - check server identity, not just mere presence on the registry
+		//  - implement ACL based on identity tied to secrets
 		ecryptedSecret, err := encryptRSA(request.ClientPubKey, value)
 		if err != nil {
 			slog.Error("encrypt secret", "error", err)

@@ -7,8 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"testing"
 )
 
 var (
@@ -41,7 +39,12 @@ type kvRequest struct {
 }
 
 // NewClient creates a new client, fetches the server's encryption public key,
-// and generates RSA and Ed25519 key pairs for future requests.
+// and generates RSA key pairs for encrypting k/v secret requests.
+//
+// Pre-computed ed25519 signing keys (via NewPairEd25519() or any other means)
+// must be passed to a new client, with the expectation that the public key
+// be made available to the server to facilitate authentication.
+// see: WriteRegistry() for details
 func NewClient(serverURL, keyPub, keyPriv string) (*Client, error) {
 	rsaPublic, rsaPrivate, err := newPairRSA(Defaults.BitsizeRSA)
 	if err != nil {
@@ -60,13 +63,6 @@ func NewClient(serverURL, keyPub, keyPriv string) (*Client, error) {
 	err = client.fetchServerPubkey()
 	if err != nil || client.serverPubkey == "" {
 		return nil, fmt.Errorf("failed to fetch server pubkey: %w", err)
-	}
-	// TODO use another method to distribute?
-	if testing.Testing() {
-		err = os.Setenv(ClientSigningPubkey, client.keyEd25519Public)
-		if err != nil {
-			return nil, fmt.Errorf("setenv: %w", err)
-		}
 	}
 	return &client, nil
 }

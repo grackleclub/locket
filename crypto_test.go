@@ -36,7 +36,7 @@ func TestRSA(t *testing.T) {
 
 func TestEd25519(t *testing.T) {
 	t.Logf("plaintext (original): \n%s", testCypher)
-	publicKey, privateKey, err := newPairEd25519()
+	publicKey, privateKey, err := NewPairEd25519()
 	require.NoError(t, err)
 	t.Logf("public key:\n%s", publicKey)
 	t.Logf("private key:\n%s", privateKey)

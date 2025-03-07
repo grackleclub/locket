@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testRegistryItems = []regEntry{
+var testRegistryItems = []RegEntry{
 	{
 		Name:   "foo1",
 		KeyPub: "asdfasdf",
