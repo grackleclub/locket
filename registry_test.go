@@ -10,12 +10,10 @@ import (
 var testRegistryItems = []regEntry{
 	{
 		Name:   "foo1",
-		Ip:     "127.0.0.1",
 		KeyPub: "asdfasdf",
 	},
 	{
 		Name:   "bar2",
-		Ip:     "127.0.0.1",
 		KeyPub: "zyx",
 	},
 }

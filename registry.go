@@ -12,7 +12,6 @@ import (
 // the server should recognize and authorize
 type regEntry struct {
 	Name   string `yaml:"name"`
-	Ip     string `yaml:"ip"`
 	KeyPub string `yaml:"keypub"`
 }
 

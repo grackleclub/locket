@@ -10,17 +10,26 @@ import (
 )
 
 func TestE2E(t *testing.T) {
+	// create signing keys for the soon to be client
+	pub, priv, err := newPairEd25519()
+	require.NoError(t, err)
+
+	var reg = []regEntry{{
+		Name:   "foo-1",
+		KeyPub: pub,
+	}}
+	testReg := path.Join("temp", "testreg.yml")
+	err = WriteRegistry(testReg, reg)
+	require.NoError(t, err)
+
 	var source = dotenv{
 		path: path.Join(testEnvFile),
 	}
-	server, err := NewServer(source)
+	server, err := NewServer(source, testReg)
 	require.NoError(t, err)
 
 	handler := httptest.NewServer(http.HandlerFunc(server.Handler))
 	defer handler.Close()
-
-	pub, priv, err := newPairEd25519()
-	require.NoError(t, err)
 
 	client, err := NewClient(handler.URL, pub, priv)
 	require.NoError(t, err)

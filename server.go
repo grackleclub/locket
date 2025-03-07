@@ -4,16 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
-	"os"
-	"strings"
 )
-
-var DefaultBitRSA = 2048 // default bit size for RSA keys
 
 type Server struct {
 	secrets       map[string]string // secret k/v pairs
-	registry      []service         // registered services
+	registry      []regEntry        // registered services
 	keyRsaPublic  string            // encryption public key
 	keyRsaPrivate string            // encryption private key
 }
@@ -29,14 +26,29 @@ type kvResponse struct {
 	Payload string `json:"payload"`
 }
 
-func NewServer(opts source) (*Server, error) {
-	var server Server
-	var err error
-	server.keyRsaPublic, server.keyRsaPrivate, err = newPairRSA(DefaultBitRSA)
+// registry contains a list of allowed services
+// var registry []regEntry
+
+// NewServer sets up a new secrets server when provided source options
+// and a path to the registry of allowed services (and their public signing keys)
+func NewServer(opts source, regPath string) (*Server, error) {
+	rsaPublic, rsaPrivate, err := newPairRSA(Defaults.BitsizeRSA)
 	if err != nil {
 		return nil, fmt.Errorf("generate key pair: %w", err)
 	}
-	// TODO load register of allowed client keys
+	registry, err := ReadRegistry(regPath)
+	if err != nil {
+		return nil, fmt.Errorf("read registry yaml file: %w", err)
+	}
+	if len(registry) == 0 {
+		slog.Warn("registry is empty, server will be unable to authenticate any clients")
+	}
+	server := Server{
+		registry:      registry,
+		keyRsaPublic:  rsaPublic,
+		keyRsaPrivate: rsaPrivate,
+	}
+
 	switch opts := opts.(type) {
 	case env:
 		secrets, err := opts.load()
@@ -93,46 +105,34 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 		}
 		slog.Debug("decrypted payload", "payload", payload)
-		// TOOD load another way
-		s.registry = []service{
-			{
-				name:       "service1",
-				IPs:        []string{"127.0.0.1"},
-				secrets:    []string{"foo"},
-				PubSignKey: os.Getenv(ClientSigningPubkey),
-			},
+
+		// require from CIDR range DefaultAllowCIDR
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			slog.Error("split host port", "error", err)
+			// maybe a 5xx, but probably only because of malformed host addr
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
 		}
-		// require IP to be in registry
-		var requestingServiceName string
-		var allowedIP bool
-		for _, svc := range s.registry {
-			for _, ip := range svc.IPs {
-				parts := strings.Split(ip, ":")
-				requestIP := r.RemoteAddr
-				if len(parts) > 0 {
-					requestIP = parts[0]
-				}
-				// slog.Debug("checking IP", "ip", parts[0])
-				if ip == requestIP {
-					requestingServiceName = svc.name
-					slog.Debug("found service with allowed IP", "name", svc.name, "ip", ip)
-					allowedIP = true
-					break
-				}
-			}
+		clientIP := net.ParseIP(ip)
+		_, cidr, err := net.ParseCIDR(Defaults.AllowCird)
+		if err != nil {
+			slog.Error("parse CIDR", "error", err)
+			http.Error(w, "server error", http.StatusInternalServerError)
+			return
 		}
-		if !allowedIP {
-			slog.Error("IP not allowed", "ip", r.RemoteAddr)
+		if !cidr.Contains(clientIP) {
+			slog.Warn("IP rejected", "ip", r.RemoteAddr)
 			http.Error(w, "forbidden", http.StatusForbidden)
 		} else {
-			slog.Debug("IP allowed", "ip", r.RemoteAddr, "service", requestingServiceName)
+			slog.Debug("IP allowed", "ip", r.RemoteAddr)
 		}
 
-		// verify signature
+		// verify signature against registry
 		var matches bool
-		slog.Info("verifying signature", "key", s.registry[0].PubSignKey)
+		slog.Info("verifying signature")
 		for _, svc := range s.registry {
-			match, err := verifyEd25519(svc.PubSignKey, payload, request.PayloadSignature)
+			match, err := verifyEd25519(svc.KeyPub, payload, request.PayloadSignature)
 			if err != nil {
 				slog.Error("verify signature", "error", err)
 				http.Error(w, "bad request", http.StatusBadRequest)
@@ -168,7 +168,6 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 		}
 		w.Header().Set("Content-Type", "application/json")
-
 		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

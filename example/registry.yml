@@ -1,6 +1,4 @@
 - name: foo1
-  ip: 127.0.0.1
   keypub: asdfasdf
 - name: bar2
-  ip: 127.0.0.1
   keypub: zyx

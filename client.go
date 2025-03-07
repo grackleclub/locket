@@ -43,11 +43,16 @@ type kvRequest struct {
 // NewClient creates a new client, fetches the server's encryption public key,
 // and generates RSA and Ed25519 key pairs for future requests.
 func NewClient(serverURL, keyPub, keyPriv string) (*Client, error) {
-	var client Client
-	var err error
-	client.keyRsaPublic, client.keyRsaPrivate, err = newPairRSA(DefaultBitRSA)
+	rsaPublic, rsaPrivate, err := newPairRSA(Defaults.BitsizeRSA)
 	if err != nil {
 		return nil, fmt.Errorf("generate key pair (RSA): %w", err)
+	}
+	client := Client{
+		serverAddress:     serverURL,
+		keyRsaPublic:      rsaPublic,
+		keyRsaPrivate:     rsaPrivate,
+		keyEd25519Public:  keyPub,
+		keyEd25519Private: keyPriv,
 	}
 	client.serverAddress = serverURL
 	client.keyEd25519Public = keyPub
