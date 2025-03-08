@@ -64,6 +64,7 @@ func (d dotenv) load() (map[string]string, error) {
 			line = strings.TrimSpace(line[:idx])
 		}
 
+		// separate key and value
 		parts := strings.SplitN(line, delimiter, 2)
 		if len(parts) != 2 {
 			slog.Debug("skipping invalid line", "line_num", lineNum, "file", d.path)

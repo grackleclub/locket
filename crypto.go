@@ -92,7 +92,7 @@ func decryptRSA(privateKeyPEM, ciphertext string) (string, error) {
 func NewPairEd25519() (string, string, error) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		return "", "", fmt.Errorf("generate key pair: %w", err)
+		return "", "", fmt.Errorf("generate ked25519 ey pair: %w", err)
 	}
 
 	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
