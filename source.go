@@ -2,11 +2,21 @@ package locket
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/1password/onepassword-sdk-go"
 )
+
+var OnePasswordTokenEnvVarName = "OP_SERVICE_ACCOUNT_TOKEN"
+
+type Secrets map[string]string // all key/value secrets for a single service
 
 // source represents a valid source for secrets.
 // examples include:
@@ -14,15 +24,23 @@ import (
 //   - env: environment variables
 //   - 1password: 1password vault
 type source interface {
-	load() (map[string]string, error)
+	load() (map[string]Secrets, error)
 }
 
 type env struct{}
 
-// load k=v pairs from local environment
-func (e env) load() (map[string]string, error) {
+// load k=v pairs from local environment.
+//
+// Access simple k/v pairs through secrets["env"],
+// required because other load() funcs return map[string]Secrets
+// to allow separation of secrets by service name.
+func (e env) load() (map[string]Secrets, error) {
 	env := os.Environ()
-	secrets := make(map[string]string)
+	// We take an unncessary map of maps because
+	// other methods expect a map of maps
+	// to allow separation of secrets by service name.
+	parent := make(map[string]Secrets)
+	secrets := make(Secrets)
 	for _, e := range env {
 		parts := strings.SplitN(e, "=", 2)
 		if len(parts) != 2 {
@@ -30,57 +48,154 @@ func (e env) load() (map[string]string, error) {
 		}
 		secrets[parts[0]] = parts[1]
 	}
-	return secrets, nil
+	parent["env"] = secrets
+	return parent, nil
 }
 
 type dotenv struct {
-	path string
+	paths []string
 }
 
-// load k=v pairs from a .env file, ignoring any #comments
-func (d dotenv) load() (map[string]string, error) {
+// load k=v pairs from a .env file, ignoring any #comments.
+//
+// The name of the file should correspond to the service name.
+// e.g. "foo-db.env" -> service "foo-db".
+func (d dotenv) load() (map[string]Secrets, error) {
 	delimiter := "="
-	f, err := os.Open(d.path)
+	allSecrets := make(map[string]Secrets)
+	for _, path := range d.paths {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("open file: %w", err)
+		}
+		defer f.Close()
+
+		secrets := make(Secrets)
+		scanner := bufio.NewScanner(f)
+		lineNum := 0
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Text()
+
+			// skip line comments
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "#") || line == "" {
+				continue
+			}
+
+			// remove trailing comments
+			if idx := strings.Index(line, " #"); idx != -1 {
+				line = strings.TrimSpace(line[:idx])
+			}
+
+			// separate key and value
+			parts := strings.SplitN(line, delimiter, 2)
+			if len(parts) != 2 {
+				slog.Debug("skipping invalid line", "line_num", lineNum, "file", path)
+				return nil, fmt.Errorf("invalid line: %s", line)
+			}
+			// strip leading and trailing quotes
+			value := parts[1]
+			value = strings.Trim(value, `"'`)
+
+			secrets[parts[0]] = value
+			slog.Debug("loaded secret", "name", parts[0])
+		}
+
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("scan file: %w", err)
+		}
+		path = strings.TrimSuffix((filepath.Base(path)), ".env")
+		allSecrets[path] = secrets
+	}
+	return allSecrets, nil
+}
+
+type onepass struct {
+	vault string
+}
+
+// Load1password loads all service secrets from a named 1password vault
+func (o *onepass) load() (map[string]Secrets, error) {
+	// load client
+	ctx := context.Background()
+	now := time.Now().UTC()
+	token, ok := os.LookupEnv(OnePasswordTokenEnvVarName)
+	if !ok {
+		return nil, fmt.Errorf("required %q not set", OnePasswordTokenEnvVarName)
+	}
+	slog.Debug("found token", "name", OnePasswordTokenEnvVarName)
+
+	client, err := onepassword.NewClient(ctx,
+		onepassword.WithServiceAccountToken(token),
+		onepassword.WithIntegrationInfo(
+			onepassword.DefaultIntegrationName,
+			onepassword.DefaultIntegrationVersion,
+		),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("open file: %w", err)
+		return nil, fmt.Errorf("init client: %w", err)
 	}
-	defer f.Close()
+	slog.Debug("client created", "elapsed", time.Since(now))
 
-	secrets := make(map[string]string)
-	scanner := bufio.NewScanner(f)
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-
-		// skip line comments
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "#") || line == "" {
-			continue
-		}
-
-		// remove trailing comments
-		if idx := strings.Index(line, " #"); idx != -1 {
-			line = strings.TrimSpace(line[:idx])
-		}
-
-		// separate key and value
-		parts := strings.SplitN(line, delimiter, 2)
-		if len(parts) != 2 {
-			slog.Debug("skipping invalid line", "line_num", lineNum, "file", d.path)
-			return nil, fmt.Errorf("invalid line: %s", line)
-		}
-		// strip leading and trailing quotes
-		value := parts[1]
-		value = strings.Trim(value, `"'`)
-
-		secrets[parts[0]] = value
-		slog.Debug("loaded secret", "name", parts[0])
+	// use the client
+	var allSecrets = make(map[string]Secrets)
+	start := time.Now().UTC()
+	vault, err := client.VaultsAPI.ListAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list vaults: %w", err)
 	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan file: %w", err)
+	var found bool
+	for {
+		vlt, err := vault.Next()
+		if errors.Is(err, onepassword.ErrorIteratorDone) {
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("iterate vaults: %w", err)
+		}
+		if vlt.Title == o.vault {
+			slog.Debug("loading selected vault", "id", vlt.ID, "title", vlt.Title)
+			found = true
+			services, err := client.ItemsAPI.ListAll(ctx, vlt.ID)
+			if err != nil {
+				return nil, fmt.Errorf("list items: %w", err)
+			}
+			for {
+				var serviceSecrects = make(Secrets)
+				service, err := services.Next()
+				if err != nil {
+					if errors.Is(err, onepassword.ErrorIteratorDone) {
+						break
+					} else {
+						return nil, fmt.Errorf("iterate items: %w", err)
+					}
+				}
+				slog.Debug("loading service",
+					"id", service.ID,
+					"title", service.Title,
+				)
+				serviceDetail, err := client.ItemsAPI.Get(ctx, vlt.ID, service.ID)
+				if err != nil {
+					return nil, fmt.Errorf("get item: %w", err)
+				}
+				for _, secret := range serviceDetail.Fields {
+					serviceSecrects[secret.Title] = secret.Value
+				}
+				allSecrets[service.Title] = serviceSecrects
+				slog.Debug("loaded secrets for service", "qty", len(serviceSecrects), "service", service.Title)
+			}
+		}
 	}
-
-	return secrets, nil
+	if !found {
+		return nil, fmt.Errorf("vault %q not found", o.vault)
+	}
+	if len(allSecrets) == 0 {
+		return nil, fmt.Errorf("no services/items found in vault %q", o.vault)
+	}
+	slog.Debug("vault load complete",
+		"elapsed", time.Since(start),
+		"vault", o.vault,
+		"services", len(allSecrets),
+	)
+	return allSecrets, nil
 }

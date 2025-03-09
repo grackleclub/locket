@@ -9,10 +9,10 @@ import (
 )
 
 type Server struct {
-	secrets       map[string]string // secret k/v pairs
-	registry      []RegEntry        // registered services
-	keyRsaPublic  string            // encryption public key
-	keyRsaPrivate string            // encryption private key
+	secrets       map[string]Secrets // secret k/v pairs
+	registry      []RegEntry         // registered services
+	keyRsaPublic  string             // encryption public key
+	keyRsaPrivate string             // encryption private key
 }
 
 type kvResponse struct {
@@ -51,8 +51,8 @@ func NewServer(opts source, regPath string) (*Server, error) {
 		server.secrets = secrets
 		return &server, nil
 	case dotenv:
-		if opts.path == "" {
-			return nil, fmt.Errorf("path required to .env file")
+		if len(opts.paths) == 0 {
+			return nil, fmt.Errorf("at least one path required to *.env file")
 		}
 		secrets, err := opts.load()
 		if err != nil {
@@ -126,6 +126,7 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 
 		// verify signature against registry
 		var matches bool
+		var verifiedService string
 		slog.Info("verifying signature")
 		for _, svc := range s.registry {
 			match, err := verifyEd25519(svc.KeyPub, payload, request.PayloadSignature)
@@ -135,6 +136,7 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			}
 			if match {
 				matches = true
+				verifiedService = svc.Name
 				break
 			}
 		}
@@ -144,11 +146,20 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			slog.Debug("signature verified")
 		}
-		value, ok := s.secrets[payload]
+		secrets, ok := s.secrets[verifiedService]
+		slog.Debug("secrets", "service", verifiedService, "secrets", s.secrets)
+		if !ok {
+			slog.Warn("service not found in secrets", "service", verifiedService)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+
+		value, ok := secrets[payload]
 		if !ok {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
+
 		// TODO for enhanced security through segmentation
 		//  - check server identity, not just mere presence on the registry
 		//  - implement ACL based on identity tied to secrets

@@ -15,7 +15,7 @@ func TestE2E(t *testing.T) {
 	require.NoError(t, err)
 
 	var reg = []RegEntry{{
-		Name:   "foo-1",
+		Name:   "foo-service",
 		KeyPub: pub,
 	}}
 	testReg := path.Join("temp", "testreg.yml")
@@ -23,7 +23,7 @@ func TestE2E(t *testing.T) {
 	require.NoError(t, err)
 
 	var source = dotenv{
-		path: path.Join(testEnvFile),
+		paths: []string{path.Join("example", "foo-service.env")},
 	}
 	server, err := NewServer(source, testReg)
 	require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestE2E(t *testing.T) {
 	err = client.fetchServerPubkey()
 	require.NoError(t, err)
 
-	resp, err := client.fetchSecret("FOO")
+	resp, err := client.fetchSecret("FAKE_A")
 	require.NoError(t, err)
 	t.Logf("secret: %s", resp)
 }
