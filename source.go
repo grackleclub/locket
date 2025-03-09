@@ -69,7 +69,7 @@ func (d Dotenv) Load() (map[string]Secrets, error) {
 	for _, path := range d.Paths {
 		f, err := os.Open(path)
 		if err != nil {
-			return nil, fmt.Errorf("open file: %w", err)
+			return nil, fmt.Errorf("open file %q: %w", path, err)
 		}
 		defer f.Close()
 
