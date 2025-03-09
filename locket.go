@@ -16,6 +16,9 @@ type defaults struct {
 	BitsizeRSA int    // bit size passed to RSA creation for client and server encryption
 }
 
+// map[serviceName]keyPrivateSigning
+type KeysPrivateSigning map[string]string
+
 func init() {
 	if testing.Testing() {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
@@ -26,9 +29,9 @@ func init() {
 // Bootstrap generates a new key pair for each service in the provided list,
 // adding service private keys to a secrets map, and
 // public keys with service names to a registry
-func Bootstrap(services []string) ([]RegEntry, map[string]string, error) {
+func Bootstrap(services []string) ([]RegEntry, KeysPrivateSigning, error) {
 	var registry []RegEntry
-	serviceKeysPrivates := make(map[string]string)
+	serviceKeysPrivates := make(KeysPrivateSigning)
 	for _, service := range services {
 		public, private, err := NewPairEd25519()
 		if err != nil {
