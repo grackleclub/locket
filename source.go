@@ -25,19 +25,19 @@ type Secrets map[string]string // all key/value secrets for a single service
 //   - env: environment variables
 //   - onepass: 1password vault
 type source interface {
-	load() (map[string]Secrets, error)
+	Load() (map[string]Secrets, error)
 }
 
-// env satisfies the source interface,
+// Env satisfies the source interface,
 // loading secrets from the local environment.
-type env struct{}
+type Env struct{}
 
-// load k=v pairs from local environment.
+// Load k=v pairs from local environment.
 //
 // Access simple k/v pairs through secrets["env"],
-// required because other load() funcs return map[string]Secrets
+// required because other Load() funcs return map[string]Secrets
 // to allow separation of secrets by service name.
-func (e env) load() (map[string]Secrets, error) {
+func (e Env) Load() (map[string]Secrets, error) {
 	env := os.Environ()
 	// We take an unncessary map of maps because
 	// other methods expect a map of maps
@@ -59,11 +59,11 @@ type Dotenv struct {
 	Paths []string
 }
 
-// load k=v pairs from a .env file, ignoring any #comments.
+// Load k=v pairs from a .env file, ignoring any #comments.
 //
 // The name of the file should correspond to the service name.
 // e.g. "foo-db.env" -> service "foo-db".
-func (d Dotenv) load() (map[string]Secrets, error) {
+func (d Dotenv) Load() (map[string]Secrets, error) {
 	delimiter := "="
 	allSecrets := make(map[string]Secrets)
 	for _, path := range d.Paths {
@@ -121,9 +121,9 @@ type Onepass struct {
 	Vault string // name of the vault containig service secrets
 }
 
-// load all service secrets from a named 1password vault,
+// Load all service secrets from a named 1password vault,
 // returning a map of service names to their set of k/v secrets.
-func (o Onepass) load() (map[string]Secrets, error) {
+func (o Onepass) Load() (map[string]Secrets, error) {
 	// load client
 	ctx := context.Background()
 	now := time.Now().UTC()

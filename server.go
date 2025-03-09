@@ -42,8 +42,8 @@ func NewServer(opts source, regPath string) (*Server, error) {
 	}
 
 	switch opts := opts.(type) {
-	case env:
-		secrets, err := opts.load()
+	case Env:
+		secrets, err := opts.Load()
 		if err != nil {
 			return nil, fmt.Errorf("load env: %w", err)
 		}
@@ -53,14 +53,14 @@ func NewServer(opts source, regPath string) (*Server, error) {
 		if len(opts.Paths) == 0 {
 			return nil, fmt.Errorf("at least one path required to *.env file")
 		}
-		secrets, err := opts.load()
+		secrets, err := opts.Load()
 		if err != nil {
 			return nil, fmt.Errorf("load .env file: %w", err)
 		}
 		server.secrets = secrets
 		return &server, nil
 	case Onepass:
-		secrets, err := opts.load()
+		secrets, err := opts.Load()
 		if err != nil {
 			return nil, fmt.Errorf("load onepass: %w", err)
 		}

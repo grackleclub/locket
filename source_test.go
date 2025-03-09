@@ -13,7 +13,7 @@ func TestLoadFile(t *testing.T) {
 	var source = Dotenv{
 		Paths: []string{path.Join(testEnvFile)},
 	}
-	secrets, err := source.load()
+	secrets, err := source.Load()
 	require.NoError(t, err)
 	require.Greater(t, len(secrets), 0)
 	for serviceName, secrets := range secrets {
@@ -25,8 +25,8 @@ func TestLoadFile(t *testing.T) {
 }
 
 func TestLoadEnv(t *testing.T) {
-	var source = env{}
-	secrets, err := source.load()
+	var source = Env{}
+	secrets, err := source.Load()
 	require.NoError(t, err)
 	for k, _ := range secrets["env"] {
 		t.Logf("loaded: %v", k)
