@@ -7,31 +7,28 @@ import (
 	"log/slog"
 	"testing"
 
-	prettylog "github.com/grackleclub/log"
+	"github.com/grackleclub/log"
 	"github.com/stretchr/testify/require"
 )
 
 func init() {
-	prettylog.Init(slog.LevelDebug)
+	log.Init(slog.LevelDebug)
 }
 
-func TestNewClient(t *testing.T) {
+func TestLoad(t *testing.T) {
 	ctx := context.Background()
-	client, err := NewClient(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, client)
-}
+	t.Run("load 1password", func(t *testing.T) {
+		client, err := newOpClient(ctx)
+		v, err := Vault(ctx, client, "test")
+		require.NoError(t, err)
+		require.NotNil(t, v)
+		require.NotEmpty(t, v)
+		for _, vault := range v {
+			t.Logf("vault: %+v", vault)
+		}
 
-func TestVault(t *testing.T) {
-	ctx := context.Background()
-	client, err := NewClient(ctx)
-	v, err := Vault(ctx, client, "test")
-	require.NoError(t, err)
-	require.NotNil(t, v)
-	require.NotEmpty(t, v)
-	for _, vault := range v {
-		t.Logf("vault: %+v", vault)
-	}
+	})
+
 }
 
 // func TestLoadVaults(t *testing.T) {
