@@ -4,8 +4,60 @@
 
 secrets management service
 
+## Systems Diagram
+```mermaid
+sequenceDiagram
+    box External 
+    participant CI
+    participant source
+    end
+    box Locket Server
+    participant secrets
+    participant registry
+    participant handler
+    end
+    box Locket Client (service)
+    participant client
+    end
+
+    activate CI
+    CI->>registry: public signing keys
+    CI->>client: private signing key
+    CI->>secrets: source access key (or source files)
+    note over CI: depoy complete
+    deactivate CI
+
+    secrets->>source: request all secrets
+    activate secrets
+    source->>secrets: all secrets
+    note over secrets: server init complete
+    deactivate secrets
+
+    client->>handler: GET - public key
+    activate client
+    handler->>client: server public encryption key
+    note over client: client init complete
+    deactivate client
+
+    client->>handler: POST - secret (encrypted & signed)
+    activate client
+    handler->>registry: authenticate signing key
+    activate handler
+    registry->>handler: verify identity
+    note over handler: auth & access control
+    handler--x client: forbidden
+    deactivate handler
+    handler->>secrets: request secret
+    secrets->>handler: secret value
+    handler-->>client: encrypted secret
+    note over client: secret fetched
+    deactivate client
+```
+1. 
+
+
 ## usage
-Locket is a secrets cache for production services. It only stores secrets in memory, relying on external secrets cache or .env file as source. Why? Because the 1password GUI is great for business use, but working with the 1password client container was a pain in the ass, and this wrapper provides flexibility to swap secrets origin without changing produciton architecture. It's really just for me.
+Locket is a secrets cache for production services. It only stores secrets in memory, relying on external secrets cache or .env file as source. Why? Because the 1password GUI is great for business use, but working with the 1password client container was a pain in the ass, and this wrapper provides flexibility to swap secrets origin without changing produciton architecture.
 
 Locket works with three steps:
 1. setup [registry](#registry) of allowed services
@@ -69,9 +121,3 @@ if err != nil {
     - decrypts
 
  
-
-## endpoints
-route | method(s) | purpose
---- | --- | ---
-`/` | `GET` | provide server public key
-`/` | `POST` | make encrypted signed request for values
