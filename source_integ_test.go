@@ -10,8 +10,8 @@ import (
 
 func Test1password(t *testing.T) {
 	t.Run("load 1password", func(t *testing.T) {
-		var op = onepass{
-			vault: "test",
+		var op = Onepass{
+			Vault: "test",
 		}
 		allSecrets, err := op.load()
 		require.NoError(t, err)

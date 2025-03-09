@@ -15,12 +15,11 @@ type Server struct {
 	keyRsaPrivate string             // encryption private key
 }
 
+// kvResponse is the server's response to the client's request,
+// containing the encrypted secret value.
 type kvResponse struct {
 	Payload string `json:"payload"`
 }
-
-// registry contains a list of allowed services
-// var registry []regEntry
 
 // NewServer sets up a new secrets server when provided source options
 // and a path to the registry of allowed services (and their public signing keys)
@@ -50,8 +49,8 @@ func NewServer(opts source, regPath string) (*Server, error) {
 		}
 		server.secrets = secrets
 		return &server, nil
-	case dotenv:
-		if len(opts.paths) == 0 {
+	case Dotenv:
+		if len(opts.Paths) == 0 {
 			return nil, fmt.Errorf("at least one path required to *.env file")
 		}
 		secrets, err := opts.load()
@@ -60,7 +59,7 @@ func NewServer(opts source, regPath string) (*Server, error) {
 		}
 		server.secrets = secrets
 		return &server, nil
-	case onepass:
+	case Onepass:
 		secrets, err := opts.load()
 		if err != nil {
 			return nil, fmt.Errorf("load onepass: %w", err)
@@ -167,9 +166,6 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// TODO for enhanced security through segmentation
-		//  - check server identity, not just mere presence on the registry
-		//  - implement ACL based on identity tied to secrets
 		ecryptedSecret, err := encryptRSA(request.ClientPubKey, value)
 		if err != nil {
 			slog.Error("encrypt secret", "error", err)

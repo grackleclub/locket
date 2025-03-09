@@ -10,8 +10,8 @@ import (
 var testEnvFile = path.Join("example", "example.env")
 
 func TestLoadFile(t *testing.T) {
-	var source = dotenv{
-		paths: []string{path.Join(testEnvFile)},
+	var source = Dotenv{
+		Paths: []string{path.Join(testEnvFile)},
 	}
 	secrets, err := source.load()
 	require.NoError(t, err)

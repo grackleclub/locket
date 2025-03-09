@@ -21,13 +21,15 @@ type Secrets map[string]string // all key/value secrets for a single service
 
 // source represents a valid source for secrets.
 // examples include:
-//   - dotenv: e.g. *.env files
+//   - dotenv: service-name.env files
 //   - env: environment variables
-//   - 1password: 1password vault
+//   - onepass: 1password vault
 type source interface {
 	load() (map[string]Secrets, error)
 }
 
+// env satisfies the source interface,
+// loading secrets from the local environment.
 type env struct{}
 
 // load k=v pairs from local environment.
@@ -53,18 +55,18 @@ func (e env) load() (map[string]Secrets, error) {
 	return parent, nil
 }
 
-type dotenv struct {
-	paths []string
+type Dotenv struct {
+	Paths []string
 }
 
 // load k=v pairs from a .env file, ignoring any #comments.
 //
 // The name of the file should correspond to the service name.
 // e.g. "foo-db.env" -> service "foo-db".
-func (d dotenv) load() (map[string]Secrets, error) {
+func (d Dotenv) load() (map[string]Secrets, error) {
 	delimiter := "="
 	allSecrets := make(map[string]Secrets)
-	for _, path := range d.paths {
+	for _, path := range d.Paths {
 		f, err := os.Open(path)
 		if err != nil {
 			return nil, fmt.Errorf("open file: %w", err)
@@ -112,12 +114,16 @@ func (d dotenv) load() (map[string]Secrets, error) {
 	return allSecrets, nil
 }
 
-type onepass struct {
-	vault string
+// Onepass satisfies the source interface,
+// loading secrets from a 1password vault over the net with 1password API.
+// Service account token must be set environment as locket.OnePasswordVar.
+type Onepass struct {
+	Vault string // name of the vault containig service secrets
 }
 
-// Load1password loads all service secrets from a named 1password vault
-func (o onepass) load() (map[string]Secrets, error) {
+// load all service secrets from a named 1password vault,
+// returning a map of service names to their set of k/v secrets.
+func (o Onepass) load() (map[string]Secrets, error) {
 	// load client
 	ctx := context.Background()
 	now := time.Now().UTC()
@@ -154,7 +160,7 @@ func (o onepass) load() (map[string]Secrets, error) {
 		} else if err != nil {
 			return nil, fmt.Errorf("iterate vaults: %w", err)
 		}
-		if vlt.Title == o.vault {
+		if vlt.Title == o.Vault {
 			slog.Debug("loading selected vault", "id", vlt.ID, "title", vlt.Title)
 			found = true
 			services, err := client.ItemsAPI.ListAll(ctx, vlt.ID)
@@ -188,14 +194,14 @@ func (o onepass) load() (map[string]Secrets, error) {
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("vault %q not found", o.vault)
+		return nil, fmt.Errorf("vault %q not found", o.Vault)
 	}
 	if len(allSecrets) == 0 {
-		return nil, fmt.Errorf("no services/items found in vault %q", o.vault)
+		return nil, fmt.Errorf("no services/items found in vault %q", o.Vault)
 	}
 	slog.Debug("vault load complete",
 		"elapsed", time.Since(start),
-		"vault", o.vault,
+		"vault", o.Vault,
 		"services", len(allSecrets),
 	)
 	return allSecrets, nil

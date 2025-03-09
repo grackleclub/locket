@@ -1,5 +1,5 @@
 - name: foo-service
   keypub: |
     -----BEGIN ED25519 PUBLIC KEY-----
-    NCvBkcp6jVKxGK/I1vQTac/+6vA21kwGISZGIkApuRs=
+    rzVsQUhAS1L9OeDyJlSV1hamkfSaDRXIxy0MlbZiBLA=
     -----END ED25519 PUBLIC KEY-----

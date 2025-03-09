@@ -22,8 +22,8 @@ func TestE2E(t *testing.T) {
 	err = WriteRegistry(testReg, reg)
 	require.NoError(t, err)
 
-	var source = dotenv{
-		paths: []string{path.Join("example", "foo-service.env")},
+	var source = Dotenv{
+		Paths: []string{path.Join("example", "foo-service.env")},
 	}
 	server, err := NewServer(source, testReg)
 	require.NoError(t, err)
