@@ -4,9 +4,14 @@
 
 secrets management service
 
-## Systems Diagram
+## Purpose
+Locket is a secrets cache for production services. It stores secrets in memory, loaded from external secrets cache, environment, or .env file as source. Why? Because the 1password GUI is great for business use, but the sacntioned 1password cache was flaky, and I wanted a go based soluton that abstracts away secret origin while providing tight access control and integration with existing deployment.
+
+## Overview
 ```mermaid
 sequenceDiagram
+    autonumber
+
     box rgb(0, 40, 0) External 
     participant CI
     participant source
@@ -56,44 +61,10 @@ sequenceDiagram
     deactivate client
 ```
 
-## usage
-Locket is a secrets cache for production services. It only stores secrets in memory, relying on external secrets cache or .env file as source. Why? Because the 1password GUI is great for business use, but working with the 1password client container was a pain in the ass, and this wrapper provides flexibility to swap secrets origin without changing produciton architecture.
+### 1-3 Deploy
 
-Locket works with three steps:
-1. setup [registry](#registry) of allowed services
-2. spin up locket [server](#server)
-3. [client](#client)
+### 4-
 
-### registry
-During infrstructure deploy, registry is created. Clients authenticate to the server using an ed25519 signing key.
-
-```go
-import "github.com/grackleclub/locket"
-
-var services = []string{"api", "webserver"}
-
-// create signing keys for autenticating clients to server
-registry, servicePrivateKeys, err := locket.Bootstrap(services)
-if err != nil {
-    panic(fmt.Errorf("bootstrap locket: %w", err))
-}
-
-// write registry to file
- err := WriteRegistry(path.Join("deploy", "registry.yml"))
-if err != nil {
-    panic(fmt.Errorf("write registry: %w", err))
-}
-
-// not shows: distribute servicePrivateKeys so services
-```
-
-### server
-// TODO expand/improve
-
-
-
-### client
-// TODO expand/improve
 
 ## design outline
 1. init `secrets` server
