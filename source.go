@@ -67,6 +67,8 @@ func (d Dotenv) Load() (map[string]Secrets, error) {
 	delimiter := "="
 	allSecrets := make(map[string]Secrets)
 	for _, path := range d.Paths {
+		pwd, _ := os.Getwd()
+		slog.Debug("loading file", "path", path, "pwd", pwd)
 		f, err := os.Open(path)
 		if err != nil {
 			return nil, fmt.Errorf("open file %q: %w", path, err)
