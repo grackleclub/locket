@@ -60,6 +60,13 @@ func NewServer(opts source, regPath string) (*Server, error) {
 		}
 		server.secrets = secrets
 		return &server, nil
+	case onepass:
+		secrets, err := opts.load()
+		if err != nil {
+			return nil, fmt.Errorf("load onepass: %w", err)
+		}
+		server.secrets = secrets
+		return &server, nil
 	default:
 		return nil, fmt.Errorf("invalid source")
 	}

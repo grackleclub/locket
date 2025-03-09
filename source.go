@@ -14,7 +14,8 @@ import (
 	"github.com/1password/onepassword-sdk-go"
 )
 
-var OnePasswordTokenEnvVarName = "OP_SERVICE_ACCOUNT_TOKEN"
+// 1password service account token environment variable name
+var OnePasswordVar = "OP_SERVICE_ACCOUNT_TOKEN"
 
 type Secrets map[string]string // all key/value secrets for a single service
 
@@ -116,15 +117,15 @@ type onepass struct {
 }
 
 // Load1password loads all service secrets from a named 1password vault
-func (o *onepass) load() (map[string]Secrets, error) {
+func (o onepass) load() (map[string]Secrets, error) {
 	// load client
 	ctx := context.Background()
 	now := time.Now().UTC()
-	token, ok := os.LookupEnv(OnePasswordTokenEnvVarName)
+	token, ok := os.LookupEnv(OnePasswordVar)
 	if !ok {
-		return nil, fmt.Errorf("required %q not set", OnePasswordTokenEnvVarName)
+		return nil, fmt.Errorf("required %q not set", OnePasswordVar)
 	}
-	slog.Debug("found token", "name", OnePasswordTokenEnvVarName)
+	slog.Debug("found token", "name", OnePasswordVar)
 
 	client, err := onepassword.NewClient(ctx,
 		onepassword.WithServiceAccountToken(token),
