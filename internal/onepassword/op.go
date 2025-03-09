@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/1password/onepassword-sdk-go"
 )
@@ -32,10 +33,14 @@ type secret struct {
 	Value string // value of the item's '$defaultKey' field
 }
 
-// Vaults connects to 1Password and loads all vault secrets which
-// have a '$defaultKey' field. The function returns a map of vaults
-// with their secrets.
-func Vaults(ctx context.Context) (map[string]vault, error) {
+func init() {
+	if _, ok := os.LookupEnv("DEBUG"); ok {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	}
+}
+
+func NewClient(ctx context.Context) (*onepassword.Client, error) {
+	now := time.Now().UTC()
 	token, ok := os.LookupEnv(envTokenName)
 	if !ok {
 		return nil, fmt.Errorf("required %q not set", envTokenName)
@@ -52,6 +57,85 @@ func Vaults(ctx context.Context) (map[string]vault, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init client: %w", err)
 	}
+	slog.Debug("client created", "elapsed", time.Since(now))
+	return client, nil
+}
+
+type allSecrets map[string]serviceSecrets // all secrets for all services
+type serviceSecrets map[string]string     // all secrets for a single service
+
+func Vault(ctx context.Context, client *onepassword.Client, name string) (allSecrets, error) {
+	var secrets = make(allSecrets)
+	start := time.Now().UTC()
+	vault, err := client.VaultsAPI.ListAll(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list vaults: %w", err)
+	}
+	var found bool
+	for {
+		vlt, err := vault.Next()
+		if errors.Is(err, onepassword.ErrorIteratorDone) {
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("iterate vaults: %w", err)
+		}
+		if vlt.Title == name {
+			slog.Debug("loading selected vault", "id", vlt.ID, "title", vlt.Title)
+			found = true
+			services, err := client.ItemsAPI.ListAll(ctx, vlt.ID)
+			if err != nil {
+				return nil, fmt.Errorf("list items: %w", err)
+			}
+			// var serviceManySecrets = make(map[string]map[string]string)
+			var serviceSecrects = make(serviceSecrets)
+			for {
+				service, err := services.Next()
+				if err != nil {
+					if errors.Is(err, onepassword.ErrorIteratorDone) {
+						break
+					} else {
+						return nil, fmt.Errorf("iterate items: %w", err)
+					}
+				}
+				slog.Debug("loading service",
+					"id", service.ID,
+					"title", service.Title,
+				)
+				serviceDetail, err := client.ItemsAPI.Get(ctx, vlt.ID, service.ID)
+				if err != nil {
+					return nil, fmt.Errorf("get item: %w", err)
+				}
+				for _, secret := range serviceDetail.Fields {
+					serviceSecrects[secret.Title] = secret.Value
+				}
+				secrets[service.Title] = serviceSecrects
+				slog.Debug("loaded secrets for service", "qty", len(serviceSecrects), "service", service.Title)
+			}
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("vault %q not found", name)
+	}
+	if len(secrets) == 0 {
+		return nil, fmt.Errorf("no services/items found in vault %q", name)
+	}
+	slog.Debug("vault load complete",
+		"elapsed", time.Since(start),
+		"vault", name,
+		"services", len(secrets),
+	)
+	return secrets, nil
+}
+
+// Vaults connects to 1Password and loads all vault secrets which
+// have a '$defaultKey' field. The function returns a map of vaults
+// with their secrets.
+func Vaults(ctx context.Context) (map[string]vault, error) {
+	client, err := NewClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("new client: %w", err)
+	}
+
 	v, err := client.VaultsAPI.ListAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list vaults: %w", err)
