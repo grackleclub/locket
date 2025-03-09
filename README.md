@@ -62,33 +62,27 @@ sequenceDiagram
 ```
 
 ### 1-3 Deploy
+Create [registry](./registry.go) and distribute signing keys.
 
-### 4-
+### 4-5 Init Server
+Load secrets using any struct that satisfies the `source` interface.
+
+struct | source
+--- | ---
+`env` | local environment
+`dotenv` | [sevice-name].env files
+`onepass` | 1password server
 
 
-## design outline
-1. init `secrets` server
-    - read secrets
-        - prod: external source
-        - dev: from env
-    - read config for each service
-        - allowed service and IP(s)
-        - associated client ed25519 public key(s)
-        - allowed vars
-3. init `secrets` client
-    - get server's public key
-    - encrypt request with public key
-    - sign request with ed25519
-    - send request:
-        - encrypted payload
-        - payload's ed25519 signature
-        - own public RSA key
-4. `secrets` server
-    - verifies ed25519 signature
-    - decrypts payload
-    - checks ACL
-    - ecrypts response of allowed secrets with requestor's public key
-5. `secrets` client
-    - decrypts
+### 6-7 Init Client
+Fetch server public encryption key.
 
- 
+### 8-10 Enforce Access Control
+- clients must encrypt and sign every request
+- clients can only requeest their own secrets
+
+### 11-13 Fetch & Return Secret
+- responses are encrypted
+
+ ## Examples
+See [tests](./locket_test.go) for examples, and checkout docstings for extensive descriptions.
