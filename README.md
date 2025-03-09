@@ -7,16 +7,18 @@ secrets management service
 ## Systems Diagram
 ```mermaid
 sequenceDiagram
-    box External 
+    box rgb(0, 40, 0) External 
     participant CI
     participant source
     end
-    box Locket Server
+
+    box rgb(40, 0, 0) Locket Server
     participant secrets
     participant registry
     participant handler
     end
-    box Locket Client (service)
+
+    box rgb(0, 0, 40) Locket Client
     participant client
     end
 
@@ -53,8 +55,6 @@ sequenceDiagram
     note over client: secret fetched
     deactivate client
 ```
-1. 
-
 
 ## usage
 Locket is a secrets cache for production services. It only stores secrets in memory, relying on external secrets cache or .env file as source. Why? Because the 1password GUI is great for business use, but working with the 1password client container was a pain in the ass, and this wrapper provides flexibility to swap secrets origin without changing produciton architecture.
