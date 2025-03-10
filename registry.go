@@ -32,8 +32,8 @@ func WriteRegistry(path string, data []RegEntry) error {
 		return fmt.Errorf("create file: %w", err)
 	}
 
-	for _, item := range data {
-		item.Name = strings.TrimSuffix(filepath.Base(item.Name), ".env")
+	for i, item := range data {
+		data[i].Name = strings.TrimSuffix(filepath.Base(item.Name), ".env")
 	}
 
 	b, err := yaml.Marshal(data)
