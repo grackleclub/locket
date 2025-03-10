@@ -3,6 +3,8 @@ package locket
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -24,10 +26,14 @@ type RegEntry struct {
 }
 
 // WriteRegistry creates a yaml file with a registry of allowed clients.
-func WriteRegistry(filepath string, data []RegEntry) error {
-	f, err := os.Create(filepath)
+func WriteRegistry(path string, data []RegEntry) error {
+	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
+	}
+
+	for _, item := range data {
+		item.Name = strings.TrimSuffix(filepath.Base(item.Name), ".env")
 	}
 
 	b, err := yaml.Marshal(data)
