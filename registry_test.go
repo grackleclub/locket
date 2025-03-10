@@ -24,7 +24,7 @@ func TestReadWrite(t *testing.T) {
 	err := WriteRegistry(testExampleReg, testRegistryItems)
 	require.NoError(t, err)
 
-	items, err := ReadRegistry(testExampleReg)
+	items, err := ReadRegistryFile(testExampleReg)
 	require.NoError(t, err)
 	require.NotNil(t, items)
 	require.Equal(t, testRegistryItems, items)

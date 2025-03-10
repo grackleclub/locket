@@ -47,15 +47,27 @@ func WriteRegistry(path string, data []RegEntry) error {
 	return nil
 }
 
-// ReadRegistry turns a yaml file into a list of RegEntry
+// ReadRegistryFile turns a yaml file into a list of RegEntry
 // for use in server authenticating client requests.
-func ReadRegistry(filepath string) ([]RegEntry, error) {
+func ReadRegistryFile(filepath string) ([]RegEntry, error) {
 	f, err := os.ReadFile(filepath)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}
 	var out []RegEntry
 	err = yaml.Unmarshal(f, &out)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+	return out, nil
+}
+
+// ReadRegistryBytes turns a byte slice into a list of RegEntry
+// for use in server authenticating client requests.
+// Bytes format easier for embed.FS
+func ReadRegistryBytes(bytes []byte) ([]RegEntry, error) {
+	var out []RegEntry
+	err := yaml.Unmarshal(bytes, &out)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}

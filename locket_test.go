@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var regPath = path.Join("example", "registry.yml")
+
 func TestE2E(t *testing.T) {
 	// create signing keys for the soon to be client
 	pub, priv, err := NewPairEd25519()
@@ -25,7 +27,12 @@ func TestE2E(t *testing.T) {
 	var source = Dotenv{
 		Paths: []string{path.Join("example", "foo-service.env")},
 	}
-	server, err := NewServer(source, testReg)
+	registry, err := ReadRegistryFile(regPath)
+	require.NoError(t, err)
+	require.NotNil(t, registry)
+	require.Greater(t, len(registry), 0)
+
+	server, err := NewServer(source, registry)
 	require.NoError(t, err)
 
 	handler := httptest.NewServer(http.HandlerFunc(server.Handler))

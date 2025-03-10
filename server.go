@@ -22,18 +22,12 @@ type kvResponse struct {
 }
 
 // NewServer sets up a new secrets server when provided source options
-// and a path to the registry of allowed services (and their public signing keys)
-func NewServer(opts source, regPath string) (*Server, error) {
+// and registry of allowed services (and their public signing keys),
+// expected to be read from file or embed before calling NewServer().
+func NewServer(opts source, registry []RegEntry) (*Server, error) {
 	rsaPublic, rsaPrivate, err := newPairRSA(Defaults.BitsizeRSA)
 	if err != nil {
 		return nil, fmt.Errorf("generate key pair: %w", err)
-	}
-	registry, err := ReadRegistry(regPath)
-	if err != nil {
-		return nil, fmt.Errorf("read registry yaml file: %w", err)
-	}
-	if len(registry) == 0 {
-		slog.Warn("registry is empty, server will be unable to authenticate any clients")
 	}
 	server := Server{
 		registry:      registry,
