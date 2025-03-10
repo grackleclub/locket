@@ -3,6 +3,8 @@ package locket
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -37,9 +39,10 @@ func Bootstrap(services []string) ([]RegEntry, KeysPrivateSigning, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("generate key pair: %w", err)
 		}
-		serviceKeysPrivates[service] = private
+		serviceName := filepath.Base(strings.TrimSuffix(service, filepath.Ext(service)))
+		serviceKeysPrivates[serviceName] = private
 		registry = append(registry, RegEntry{
-			Name:   service,
+			Name:   serviceName,
 			KeyPub: public,
 		})
 	}
