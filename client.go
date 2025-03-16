@@ -95,6 +95,10 @@ func (c *Client) fetchServerPubkey() error {
 // (to be used for encrypting the response).
 func (c *Client) fetchSecret(name string) (string, error) {
 	slog.Debug("fetching secret", "name", name)
+	err := c.fetchServerPubkey()
+	if err != nil {
+		return "", fmt.Errorf("fetch server pubkey: %w", err)
+	}
 	var request kvRequest
 	cypher, err := encryptRSA(c.serverPubkey, name)
 	if err != nil {
