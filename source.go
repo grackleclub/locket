@@ -14,7 +14,7 @@ import (
 )
 
 // 1password service account token environment variable name
-var OnePasswordVar = "OP_SERVICE_ACCOUNT_TOKEN"
+var OnePasswordVar = "LOCKET_OP_SERVICE_ACCOUNT_TOKEN"
 
 type Secrets map[string]string // all key/value secrets for a single service
 
