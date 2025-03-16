@@ -1,6 +1,3 @@
-  (use "git add <file>..." to update what will be committed)
-  (use "git restore <file>..." to discard changes in working directory)
-	modified:   cmd/infra/infra/config.go
 # 🔐 locket ❤️
 
 [![Go - Test](https://github.com/grackleclub/locket/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/grackleclub/locket/actions/workflows/go.yml)
