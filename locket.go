@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -43,10 +41,9 @@ func Bootstrap(services []string) ([]RegEntry, KeysPrivateSigning, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("generate key pair: %w", err)
 		}
-		serviceName := filepath.Base(strings.TrimSuffix(service, filepath.Ext(service)))
-		serviceKeysPrivates[serviceName] = private
+		serviceKeysPrivates[service] = private
 		registry = append(registry, RegEntry{
-			Name:   serviceName,
+			Name:   service,
 			KeyPub: public,
 		})
 	}
