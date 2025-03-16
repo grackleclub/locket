@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"strings"
 	"time"
@@ -30,7 +31,7 @@ type source interface {
 // Env satisfies the source interface,
 // loading secrets from the local environment.
 type Env struct {
-	Services []string
+	ServiceSecrets map[string][]string
 }
 
 // Load k=v pairs from local environment.
@@ -50,22 +51,31 @@ func (e Env) Load() (map[string]Secrets, error) {
 		key := parts[0]
 		value := parts[1]
 
-		for _, service := range e.Services {
-			if !strings.HasPrefix(key, service) {
-				continue
+		for serviceName, secretNames := range e.ServiceSecrets {
+			for _, name := range secretNames {
+				if key == name {
+					len := len(value)
+					jitter := rand.Int() % 10
+					slog.Debug("loaded secret",
+						"service", serviceName,
+						"key", key,
+						"value", strings.Repeat(
+							"*",
+							len+jitter,
+						),
+					)
+					secret[key] = value
+					parent[serviceName] = secret
+				}
 			}
-			// key = strings.TrimPrefix(key, service+"_")
-			slog.Info("loaded secret", "service", service, "key", key, "value", value)
-			secret[key] = value
-			parent[service] = secret
 		}
 	}
 	return parent, nil
 }
 
 type Dotenv struct {
-	Services []string
-	Path     string
+	Path           string              // path to .env file to read
+	ServiceSecrets map[string][]string // service names and a list of their secrets
 }
 
 // Load k=v pairs from a .env file, ignoring any #comments.
@@ -108,17 +118,21 @@ func (d Dotenv) Load() (map[string]Secrets, error) {
 		value := parts[1]
 		value = strings.Trim(value, `"'`)
 
-		// load only secrets with a service prefix
-		for _, service := range d.Services {
-			if !strings.HasPrefix(key, strings.ToUpper(service)+"_") {
-				continue
+		// load only secrets specified by serviceSecrets
+		for serviceName, secretsList := range d.ServiceSecrets {
+			for _, secret := range secretsList {
+				if key == secret {
+					slog.Debug("loaded secret",
+						"service", serviceName,
+						"key", key,
+					)
+					_, ok := allSecrets[serviceName]
+					if !ok {
+						allSecrets[serviceName] = make(Secrets)
+					}
+					allSecrets[serviceName][key] = value
+				}
 			}
-			slog.Debug("loaded secret", "service", service, "key", key)
-			_, ok := allSecrets[service]
-			if !ok {
-				allSecrets[service] = make(Secrets)
-			}
-			allSecrets[service][key] = value
 		}
 	}
 

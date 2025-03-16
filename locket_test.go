@@ -23,8 +23,8 @@ func TestE2E(t *testing.T) {
 	require.NoError(t, err)
 
 	var source = Dotenv{
-		Services: []string{"SERVICE1"},
-		Path:     path.Join("example", ".env"),
+		ServiceSecrets: testServiceMap,
+		Path:           path.Join("example", ".env"),
 	}
 	registry, err := ReadRegistryFile(testReg)
 	require.NoError(t, err)

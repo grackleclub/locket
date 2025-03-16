@@ -11,8 +11,12 @@ import (
 )
 
 var (
-	testEnvFile  = path.Join("example", ".env")
-	testServices = []string{"SERVICE1", "SERVICE2"}
+	testEnvFile = path.Join("example", ".env")
+	// testServices   = []string{"SERVICE1", "SERVICE2"}
+	testServiceMap = map[string][]string{
+		"SERVICE1": {"SERVICE1_FOO", "SERVICE1_BAT", "SERVICE1_FOOBAR", "SHARED_VAR"},
+		"SERVICE2": {"SERVICE2_FOO", "SERVICE2_BAR", "SERVICE2_SYMBOLS", "SHARED_VAR"},
+	}
 )
 
 func init() {
@@ -22,8 +26,8 @@ func init() {
 func TestLoadFile(t *testing.T) {
 
 	var source = Dotenv{
-		Path:     testEnvFile,
-		Services: testServices,
+		Path:           testEnvFile,
+		ServiceSecrets: testServiceMap,
 	}
 	allSecrets, err := source.Load()
 	require.NoError(t, err)
@@ -47,7 +51,7 @@ func TestLoadEnv(t *testing.T) {
 	require.NoError(t, err)
 
 	var source = Env{
-		Services: testServices,
+		ServiceSecrets: testServiceMap,
 	}
 	secrets, err := source.Load()
 	require.NoError(t, err)
@@ -64,8 +68,8 @@ func TestLoadEnv(t *testing.T) {
 // to then test env loading
 func putFileToEnv() error {
 	var source = Dotenv{
-		Path:     testEnvFile,
-		Services: testServices,
+		Path:           testEnvFile,
+		ServiceSecrets: testServiceMap,
 	}
 	allSecrets, err := source.Load()
 	if err != nil {
