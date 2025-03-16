@@ -110,7 +110,7 @@ func (d Dotenv) Load() (map[string]Secrets, error) {
 
 		// load only secrets with a service prefix
 		for _, service := range d.Services {
-			if !strings.HasPrefix(key, service+"_") {
+			if !strings.HasPrefix(key, strings.ToUpper(service)+"_") {
 				continue
 			}
 			slog.Debug("loaded secret", "service", service, "key", key)
