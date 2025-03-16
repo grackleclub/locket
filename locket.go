@@ -33,17 +33,17 @@ func init() {
 // Bootstrap generates a new signing key pair for each service in the provided list.
 // Public keys are added to a registry (expected to be written to file),
 // and private keys are returned in a map (expected to be provided to clients upon deploy).
-func Bootstrap(services []string) ([]RegEntry, KeysPrivateSigning, error) {
+func Bootstrap(serviceSecrets map[string][]string) ([]RegEntry, KeysPrivateSigning, error) {
 	var registry []RegEntry
 	serviceKeysPrivates := make(KeysPrivateSigning)
-	for _, service := range services {
+	for serviceName, _ := range serviceSecrets {
 		public, private, err := NewPairEd25519()
 		if err != nil {
 			return nil, nil, fmt.Errorf("generate key pair: %w", err)
 		}
-		serviceKeysPrivates[service] = private
+		serviceKeysPrivates[serviceName] = private
 		registry = append(registry, RegEntry{
-			Name:   service,
+			Name:   serviceName,
 			KeyPub: public,
 		})
 	}
