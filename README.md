@@ -1,3 +1,6 @@
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   cmd/infra/infra/config.go
 # 🔐 locket ❤️
 
 [![Go - Test](https://github.com/grackleclub/locket/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/grackleclub/locket/actions/workflows/go.yml)
@@ -46,8 +49,10 @@ sequenceDiagram
     note over client: client init complete
     deactivate client
 
-    client->>handler: POST - secret (encrypted & signed)
+    client->>handler: GET - public key
     activate client
+    handler->>client: server public encryption key
+    client->>handler: POST - secret (encrypted & signed)
     handler->>registry: authenticate signing key
     activate handler
     registry->>handler: verify identity
@@ -70,18 +75,21 @@ Load secrets using any struct that satisfies the `source` interface.
 struct | source
 --- | ---
 `env` | local environment
-`dotenv` | [sevice-name].env files
+`dotenv` | `.env` file
 `onepass` | 1password server
 
 
 ### 6-7 Init Client
 Fetch server public encryption key.
 
-### 8-10 Enforce Access Control
+### 8-9 Refetch public encryption key
+Server may generate a new public key upon restart. No caching is currently implemented. 🤷
+
+### 10-12 Enforce Access Control
 - clients must encrypt and sign every request
 - clients can only requeest their own secrets
 
-### 11-13 Fetch & Return Secret
+### 13-15 Fetch & Return Secret
 - responses are encrypted
 
  ## Examples
