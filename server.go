@@ -44,7 +44,10 @@ func NewServer(opts source, registry []RegEntry) (*Server, error) {
 		server.secrets = secrets
 		return &server, nil
 	case Dotenv:
-		if len(opts.Paths) == 0 {
+		if len(opts.Services) == 0 {
+			return nil, fmt.Errorf("at least one service required to load *.env file")
+		}
+		if opts.Path == "" {
 			return nil, fmt.Errorf("at least one path required to *.env file")
 		}
 		secrets, err := opts.Load()

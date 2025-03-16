@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,89 +29,103 @@ type source interface {
 
 // Env satisfies the source interface,
 // loading secrets from the local environment.
-type Env struct{}
+type Env struct {
+	Services []string
+}
 
 // Load k=v pairs from local environment.
 //
-// Access simple k/v pairs through secrets["env"],
-// required because other Load() funcs return map[string]Secrets
-// to allow separation of secrets by service name.
+// Expect environment variables to be prefixed with the service name.
 func (e Env) Load() (map[string]Secrets, error) {
-	env := os.Environ()
-	// We take an unncessary map of maps because
-	// other methods expect a map of maps
-	// to allow separation of secrets by service name.
+	environment := os.Environ()
+	slog.Debug("loaded all environment vars", "qty", len(environment))
 	parent := make(map[string]Secrets)
-	secrets := make(Secrets)
-	for _, e := range env {
-		parts := strings.SplitN(e, "=", 2)
+	for _, env := range environment {
+		secret := make(Secrets)
+		parts := strings.SplitN(env, "=", 2)
 		if len(parts) != 2 {
+			slog.Warn("skipping invalid env", "env", env, "len", len(parts))
 			continue
 		}
-		secrets[parts[0]] = parts[1]
+		key := parts[0]
+		value := parts[1]
+
+		for _, service := range e.Services {
+			if !strings.HasPrefix(key, service) {
+				continue
+			}
+			// key = strings.TrimPrefix(key, service+"_")
+			slog.Info("loaded secret", "service", service, "key", key, "value", value)
+			secret[key] = value
+			parent[service] = secret
+		}
 	}
-	parent["env"] = secrets
 	return parent, nil
 }
 
 type Dotenv struct {
-	Paths []string
+	Services []string
+	Path     string
 }
 
 // Load k=v pairs from a .env file, ignoring any #comments.
-//
-// The name of the file should correspond to the service name.
-// e.g. "foo-db.env" -> service "foo-db".
 func (d Dotenv) Load() (map[string]Secrets, error) {
+	pwd, _ := os.Getwd()
+	slog.Debug("loading file", "path", d.Path, "pwd", pwd)
+	f, err := os.Open(d.Path)
+	if err != nil {
+		return nil, fmt.Errorf("open file %q: %w", d.Path, err)
+	}
+	defer f.Close()
+
 	delimiter := "="
 	allSecrets := make(map[string]Secrets)
-	for _, path := range d.Paths {
-		pwd, _ := os.Getwd()
-		slog.Debug("loading file", "path", path, "pwd", pwd)
-		f, err := os.Open(path)
-		if err != nil {
-			return nil, fmt.Errorf("open file %q: %w", path, err)
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+
+		// skip line comments
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") || line == "" {
+			continue
 		}
-		defer f.Close()
 
-		secrets := make(Secrets)
-		scanner := bufio.NewScanner(f)
-		lineNum := 0
-		for scanner.Scan() {
-			lineNum++
-			line := scanner.Text()
+		// remove trailing comments
+		if idx := strings.Index(line, " #"); idx != -1 {
+			line = strings.TrimSpace(line[:idx])
+		}
 
-			// skip line comments
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "#") || line == "" {
+		// separate key and value
+		parts := strings.SplitN(line, delimiter, 2)
+		if len(parts) != 2 {
+			slog.Debug("skipping invalid line", "line_num", lineNum)
+			return nil, fmt.Errorf("invalid line: %s", line)
+		}
+		key := parts[0]
+		// strip leading and trailing quotes
+		value := parts[1]
+		value = strings.Trim(value, `"'`)
+
+		// load only secrets with a service prefix
+		for _, service := range d.Services {
+			if !strings.HasPrefix(key, service+"_") {
 				continue
 			}
-
-			// remove trailing comments
-			if idx := strings.Index(line, " #"); idx != -1 {
-				line = strings.TrimSpace(line[:idx])
+			slog.Debug("loaded secret", "service", service, "key", key)
+			_, ok := allSecrets[service]
+			if !ok {
+				allSecrets[service] = make(Secrets)
 			}
-
-			// separate key and value
-			parts := strings.SplitN(line, delimiter, 2)
-			if len(parts) != 2 {
-				slog.Debug("skipping invalid line", "line_num", lineNum, "file", path)
-				return nil, fmt.Errorf("invalid line: %s", line)
-			}
-			// strip leading and trailing quotes
-			value := parts[1]
-			value = strings.Trim(value, `"'`)
-
-			secrets[parts[0]] = value
-			slog.Debug("loaded secret", "name", parts[0])
+			allSecrets[service][key] = value
 		}
-
-		if err := scanner.Err(); err != nil {
-			return nil, fmt.Errorf("scan file: %w", err)
-		}
-		path = strings.TrimSuffix((filepath.Base(path)), ".env")
-		allSecrets[path] = secrets
 	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan file: %w", err)
+	}
+
 	return allSecrets, nil
 }
 

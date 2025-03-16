@@ -9,25 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var regPath = path.Join("example", "registry.yml")
-
 func TestE2E(t *testing.T) {
 	// create signing keys for the soon to be client
 	pub, priv, err := NewPairEd25519()
 	require.NoError(t, err)
 
 	var reg = []RegEntry{{
-		Name:   "foo-service",
+		Name:   "SERVICE1",
 		KeyPub: pub,
 	}}
-	testReg := path.Join("temp", "testreg.yml")
+	testReg := path.Join("example", "testreg.yml")
 	err = WriteRegistry(testReg, reg)
 	require.NoError(t, err)
 
 	var source = Dotenv{
-		Paths: []string{path.Join("example", "foo-service.env")},
+		Services: []string{"SERVICE1"},
+		Path:     path.Join("example", ".env"),
 	}
-	registry, err := ReadRegistryFile(regPath)
+	registry, err := ReadRegistryFile(testReg)
 	require.NoError(t, err)
 	require.NotNil(t, registry)
 	require.Greater(t, len(registry), 0)
@@ -44,7 +43,8 @@ func TestE2E(t *testing.T) {
 	err = client.fetchServerPubkey()
 	require.NoError(t, err)
 
-	resp, err := client.fetchSecret("FAKE_A")
+	resp, err := client.fetchSecret("SERVICE1_FOO")
 	require.NoError(t, err)
+	require.Equal(t, "foovalue", resp)
 	t.Logf("secret: %s", resp)
 }

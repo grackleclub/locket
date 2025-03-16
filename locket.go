@@ -3,6 +3,7 @@ package locket
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,8 +24,11 @@ type KeysPrivateSigning map[string]string
 
 func init() {
 	if testing.Testing() {
+		Defaults.AllowCird = "127.0.0.1/32"
+	}
+	if _, ok := os.LookupEnv("DEBUG"); ok {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
-		Defaults.AllowCird = "127.0.0.0/24"
+		slog.Debug("debug logging enabled")
 	}
 }
 
