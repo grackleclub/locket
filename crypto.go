@@ -89,6 +89,7 @@ func decryptRSA(privateKeyPEM, ciphertext string) (string, error) {
 
 // NewPairEd25519 generates a new Ed25519 key pair used to authenticate
 // clients requests to the server.
+// Returns: publicKeyPEM, privateKeyPEM, error.
 func NewPairEd25519() (string, string, error) {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
