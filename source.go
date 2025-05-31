@@ -37,6 +37,10 @@ type Env struct {
 // Load k=v pairs from local environment.
 //
 // Expect environment variables to be prefixed with the service name.
+// e.g. SERVICE1_FOO=bar will be interpreted as:
+//   - service name: SERVICE1
+//   - secret name: SERVICE1_FOO
+//   - secret value: bar
 func (e Env) Load() (map[string]Secrets, error) {
 	environment := os.Environ()
 	slog.Debug("loaded all environment vars", "qty", len(environment))
@@ -73,12 +77,15 @@ func (e Env) Load() (map[string]Secrets, error) {
 	return parent, nil
 }
 
+// Dotenv satisfies the source interface,
+// loading secrets from a specified path to .env file.
 type Dotenv struct {
 	Path           string              // path to .env file to read
 	ServiceSecrets map[string][]string // service names and a list of their secrets
 }
 
 // Load k=v pairs from a .env file, ignoring any #comments.
+// Service name will be set by the keys in ServiceSecrets map.
 func (d Dotenv) Load() (map[string]Secrets, error) {
 	pwd, _ := os.Getwd()
 	slog.Debug("loading file", "path", d.Path, "pwd", pwd)
@@ -175,7 +182,7 @@ func (o Onepass) Load() (map[string]Secrets, error) {
 	slog.Debug("client created", "elapsed", time.Since(now))
 
 	// use the client
-	var allSecrets = make(map[string]Secrets)
+	allSecrets := make(map[string]Secrets)
 	start := time.Now().UTC()
 	vault, err := client.VaultsAPI.ListAll(ctx)
 	if err != nil {
@@ -197,7 +204,7 @@ func (o Onepass) Load() (map[string]Secrets, error) {
 				return nil, fmt.Errorf("list items: %w", err)
 			}
 			for {
-				var serviceSecrects = make(Secrets)
+				serviceSecrects := make(Secrets)
 				service, err := services.Next()
 				if err != nil {
 					if errors.Is(err, onepassword.ErrorIteratorDone) {

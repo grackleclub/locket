@@ -36,7 +36,7 @@ func init() {
 func Bootstrap(serviceSecrets map[string][]string) ([]RegEntry, KeysPrivateSigning, error) {
 	var registry []RegEntry
 	serviceKeysPrivates := make(KeysPrivateSigning)
-	for serviceName, _ := range serviceSecrets {
+	for serviceName := range serviceSecrets {
 		public, private, err := NewPairEd25519()
 		if err != nil {
 			return nil, nil, fmt.Errorf("generate key pair: %w", err)
