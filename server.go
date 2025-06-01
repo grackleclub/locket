@@ -111,7 +111,7 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		clientIP := net.ParseIP(ip)
-		_, cidr, err := net.ParseCIDR(Defaults.AllowCird)
+		_, cidr, err := net.ParseCIDR(Defaults.AllowCIDR)
 		if err != nil {
 			slog.Error("parse CIDR", "error", err)
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -120,11 +120,14 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		if !cidr.Contains(clientIP) {
 			slog.Warn("IP rejected",
 				"ip", r.RemoteAddr,
-				"allowCIDR", Defaults.AllowCird,
+				"allowCIDR", Defaults.AllowCIDR,
 			)
 			http.Error(w, "forbidden", http.StatusForbidden)
 		} else {
-			slog.Debug("IP allowed", "ip", r.RemoteAddr)
+			slog.Debug("IP allowed",
+				"ip", r.RemoteAddr,
+				"allowCIDR", Defaults.AllowCIDR,
+			)
 		}
 
 		// verify signature against registry
