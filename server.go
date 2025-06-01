@@ -146,6 +146,7 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		if !matches {
 			slog.Error("signature mismatch")
 			http.Error(w, "forbidden", http.StatusForbidden)
+			return
 		} else {
 			slog.Debug("signature verified")
 		}
@@ -167,6 +168,7 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Error("encrypt secret", "error", err)
 			http.Error(w, "server error", http.StatusInternalServerError)
+			return
 		}
 		response := kvResponse{
 			Payload: ecryptedSecret,
@@ -175,9 +177,9 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Error("encode response", "error", err)
 			http.Error(w, "bad request", http.StatusBadRequest)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
