@@ -91,7 +91,7 @@ func (c *Client) fetchServerPubkey() error {
 // fetchSecret produces an ecrypted and signed request to the server,
 // containing the name of the secret to fetch and the client's own public key
 // (to be used for encrypting the response).
-func (c *Client) fetchSecret(name string) (string, error) {
+func (c *Client) FetchSecret(name string) (string, error) {
 	slog.Debug("fetching secret", "name", name)
 	err := c.fetchServerPubkey()
 	if err != nil {

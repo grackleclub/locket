@@ -14,7 +14,7 @@ func TestE2E(t *testing.T) {
 	pub, priv, err := NewPairEd25519()
 	require.NoError(t, err)
 
-	var reg = []RegEntry{{
+	reg := []RegEntry{{
 		Name:   "SERVICE1",
 		KeyPub: pub,
 	}}
@@ -22,7 +22,7 @@ func TestE2E(t *testing.T) {
 	err = WriteRegistry(testReg, reg)
 	require.NoError(t, err)
 
-	var source = Dotenv{
+	source := Dotenv{
 		ServiceSecrets: testServiceMap,
 		Path:           path.Join("example", ".env"),
 	}
@@ -43,7 +43,7 @@ func TestE2E(t *testing.T) {
 	err = client.fetchServerPubkey()
 	require.NoError(t, err)
 
-	resp, err := client.fetchSecret("SERVICE1_FOO")
+	resp, err := client.FetchSecret("SERVICE1_FOO")
 	require.NoError(t, err)
 	require.Equal(t, "foovalue", resp)
 	t.Logf("secret: %s", resp)
