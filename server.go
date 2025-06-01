@@ -69,7 +69,7 @@ func NewServer(opts source, registry []RegEntry) (*Server, error) {
 }
 
 func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("received request",
+	slog.Info("received request",
 		"method", r.Method,
 		"url", r.URL.String(),
 		"ip", r.RemoteAddr,
