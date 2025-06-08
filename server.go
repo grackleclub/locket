@@ -151,8 +151,12 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		} else {
-			slog.Debug("signature verified")
+			slog.Info("signature verified",
+				"service", verifiedService,
+				"ip", r.RemoteAddr,
+			)
 		}
+
 		secrets, ok := s.secrets[verifiedService]
 		slog.Debug("secrets", "service", verifiedService, "secrets", s.secrets)
 		if !ok {

@@ -54,7 +54,7 @@ func (e Env) Load() (map[string]Secrets, error) {
 			slog.Warn("skipping invalid env", "env", env, "len", len(parts))
 			continue
 		}
-		key := strings.TrimSpace(parts[0])
+		key := strings.ToLower(strings.TrimSpace(parts[0]))
 		value := strings.Trim(parts[1], `"'`)
 		for serviceName, secretNames := range e.ServiceSecrets {
 			for _, name := range secretNames {
@@ -121,7 +121,7 @@ func (d Dotenv) Load() (map[string]Secrets, error) {
 			slog.Debug("skipping invalid line", "line_num", lineNum)
 			return nil, fmt.Errorf("invalid line: %s", line)
 		}
-		key := parts[0]
+		key := strings.ToLower(parts[0])
 		// strip leading and trailing quotes
 		// value := parts[1]
 		value := strings.ReplaceAll(parts[1], `\n`, "\n")
