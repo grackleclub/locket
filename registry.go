@@ -95,8 +95,8 @@ func Register(name string, registryPath string) (string, string, error) {
 			return "", "", fmt.Errorf("read registry file: %w", err)
 		}
 	} else {
-		slog.Info(
-			"registry file does not exist, will create new one",
+		slog.Debug(
+			"registry file does not exist (or other err); will create new one",
 			"registryPath", registryPath,
 			"statError", err,
 		)
