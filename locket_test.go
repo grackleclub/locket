@@ -41,7 +41,6 @@ func TestE2E(t *testing.T) {
 	handler := httptest.NewServer(http.HandlerFunc(server.Handler))
 	defer handler.Close()
 
-	// TODO: let's fix formatting errors
 	t.Log("private key generated")
 	fmt.Println(priv)
 	envVarName := "MY_PRIVATE_KEY"
@@ -101,6 +100,8 @@ func TestE2E(t *testing.T) {
 
 // formatDotenv formats the environment variables for file.
 // Systemd enviroment files and dotenv files are targeted for support.
+// TODO: this should probably be made public if it's necessary to have this be consistent.
+// I'm not sure that it is, and some of this format checking may have been chasing the wrong problem.
 func formatDotenv(envVars map[string]string) string {
 	var formatted string
 	for key, value := range envVars {
