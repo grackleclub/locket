@@ -111,6 +111,6 @@ func formatDotenv(envVars map[string]string) string {
 		formatted += fmt.Sprintf("%s=\"%s\"\n", key, escapedValue)
 	}
 	slog.Debug("formatted env vars")
-	fmt.Println(formatted)
+	// fmt.Println(formatted) // Removed to avoid side effects in tests
 	return formatted
 }
