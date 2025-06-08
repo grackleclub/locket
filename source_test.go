@@ -24,8 +24,7 @@ func init() {
 }
 
 func TestLoadFile(t *testing.T) {
-
-	var source = Dotenv{
+	source := Dotenv{
 		Path:           testEnvFile,
 		ServiceSecrets: testServiceMap,
 	}
@@ -50,7 +49,7 @@ func TestLoadEnv(t *testing.T) {
 	err := putFileToEnv()
 	require.NoError(t, err)
 
-	var source = Env{
+	source := Env{
 		ServiceSecrets: testServiceMap,
 	}
 	secrets, err := source.Load()
@@ -67,7 +66,7 @@ func TestLoadEnv(t *testing.T) {
 // testing requires a file (part of .git) to be loaded into env
 // to then test env loading
 func putFileToEnv() error {
-	var source = Dotenv{
+	source := Dotenv{
 		Path:           testEnvFile,
 		ServiceSecrets: testServiceMap,
 	}

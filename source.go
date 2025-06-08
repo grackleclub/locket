@@ -41,6 +41,8 @@ type Env struct {
 //   - service name: SERVICE1
 //   - secret name: SERVICE1_FOO
 //   - secret value: bar
+//
+// TODO: does this now strip leading and trailing quotes appropriately?
 func (e Env) Load() (map[string]Secrets, error) {
 	environment := os.Environ()
 	slog.Debug("loaded all environment vars", "qty", len(environment))
@@ -52,9 +54,8 @@ func (e Env) Load() (map[string]Secrets, error) {
 			slog.Warn("skipping invalid env", "env", env, "len", len(parts))
 			continue
 		}
-		key := parts[0]
-		value := parts[1]
-
+		key := strings.TrimSpace(parts[0])
+		value := strings.Trim(parts[1], `"'`)
 		for serviceName, secretNames := range e.ServiceSecrets {
 			for _, name := range secretNames {
 				if key == name {
@@ -122,7 +123,8 @@ func (d Dotenv) Load() (map[string]Secrets, error) {
 		}
 		key := parts[0]
 		// strip leading and trailing quotes
-		value := parts[1]
+		// value := parts[1]
+		value := strings.ReplaceAll(parts[1], `\n`, "\n")
 		value = strings.Trim(value, `"'`)
 
 		// load only secrets specified by serviceSecrets

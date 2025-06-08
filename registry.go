@@ -2,6 +2,7 @@ package locket
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,14 +63,72 @@ func ReadRegistryFile(filepath string) ([]RegEntry, error) {
 	return out, nil
 }
 
-// ReadRegistryBytes turns a byte slice into a list of RegEntry
+// UnmarshalRegistry turns a byte slice into a list of RegEntry
 // for use in server authenticating client requests.
 // Bytes format easier for embed.FS
-func ReadRegistryBytes(bytes []byte) ([]RegEntry, error) {
+func UnmarshalRegistry(bytes []byte) ([]RegEntry, error) {
 	var out []RegEntry
 	err := yaml.Unmarshal(bytes, &out)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 	return out, nil
+}
+
+// Register reads the existing registry file, upserts service key, and rewrites.
+// If the registry file does not exist, it will be created.
+// If no registry for the named service exists, a new entry will be created.
+// An existing entry for the named service will be updated with new public key.
+// Each new call of Register will generate new key pair, returning:
+// public key, private key, or any error.
+func Register(name string, registryPath string) (string, string, error) {
+	publicKey, privateKey, err := NewPairEd25519()
+	if err != nil {
+		return "", "", fmt.Errorf("generate key pair: %w", err)
+	}
+
+	var registry []RegEntry
+	_, err = os.Stat(registryPath)
+	if err == nil {
+		registry, err = ReadRegistryFile(registryPath)
+		if err != nil {
+			return "", "", fmt.Errorf("read registry file: %w", err)
+		}
+	} else {
+		slog.Debug(
+			"registry file does not exist (or other err); will create new one",
+			"registryPath", registryPath,
+			"statError", err,
+		)
+	}
+
+	// check if the service already exists in the registry
+	replaced := false
+	for i, entry := range registry {
+		if entry.Name == name {
+			slog.Debug("updating existing service in registry",
+				"service", name,
+				"publicKey", publicKey,
+			)
+			registry[i].KeyPub = publicKey
+			replaced = true
+		}
+	}
+	if !replaced {
+		slog.Debug("adding new service to registry",
+			"service", name,
+			"publicKey", publicKey,
+		)
+		registry = append(registry, RegEntry{
+			Name:   name,
+			KeyPub: publicKey,
+		})
+	}
+
+	// write the updated registry
+	err = WriteRegistry(registryPath, registry)
+	if err != nil {
+		return "", "", fmt.Errorf("write updated registry: %w", err)
+	}
+	return publicKey, privateKey, nil
 }

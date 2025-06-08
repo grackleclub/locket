@@ -1,7 +1,6 @@
 package locket
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -28,24 +27,4 @@ func init() {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 		slog.Debug("debug logging enabled")
 	}
-}
-
-// Bootstrap generates a new signing key pair for each service in the provided list.
-// Public keys are added to a registry (expected to be written to file),
-// and private keys are returned in a map (expected to be provided to clients upon deploy).
-func Bootstrap(serviceSecrets map[string][]string) ([]RegEntry, KeysPrivateSigning, error) {
-	var registry []RegEntry
-	serviceKeysPrivates := make(KeysPrivateSigning)
-	for serviceName := range serviceSecrets {
-		public, private, err := NewPairEd25519()
-		if err != nil {
-			return nil, nil, fmt.Errorf("generate key pair: %w", err)
-		}
-		serviceKeysPrivates[serviceName] = private
-		registry = append(registry, RegEntry{
-			Name:   serviceName,
-			KeyPub: public,
-		})
-	}
-	return registry, serviceKeysPrivates, nil
 }
