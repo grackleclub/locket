@@ -28,10 +28,14 @@ type source interface {
 	Load() (map[string]Secrets, error)
 }
 
+func init() {
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+}
+
 // Env satisfies the source interface,
 // loading secrets from the local environment.
 type Env struct {
-	ServiceSecrets map[string][]string
+	ServiceSecrets map[string][]string // service name mapped to list of service secret names
 }
 
 // Load k=v pairs from local environment.
@@ -46,31 +50,33 @@ type Env struct {
 func (e Env) Load() (map[string]Secrets, error) {
 	environment := os.Environ()
 	slog.Debug("loaded all environment vars", "qty", len(environment))
+	// parent has all services keyed on name (lowercase) and a secrets object.
 	parent := make(map[string]Secrets)
 	for _, env := range environment {
-		secret := make(Secrets)
+		// secrets := make(Secrets)
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) != 2 {
 			slog.Warn("skipping invalid env", "env", env, "len", len(parts))
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(parts[0]))
+		key := strings.TrimSpace(parts[0])
 		value := strings.Trim(parts[1], `"'`)
 		for serviceName, secretNames := range e.ServiceSecrets {
+			// Is this secret one that's called for by the service?
 			for _, name := range secretNames {
 				if key == name {
-					len := len(value)
 					jitter := rand.Int() % 10
 					slog.Debug("loaded secret",
 						"service", serviceName,
 						"key", key,
-						"value", strings.Repeat(
-							"*",
-							len+jitter,
-						),
+						"value", strings.Repeat("*", len(value)+jitter),
 					)
-					secret[key] = value
-					parent[serviceName] = secret
+					nameLower := strings.ToLower(serviceName)
+					if _, ok := parent[serviceName]; !ok {
+						// if service not yet in parent, add it
+						parent[nameLower] = make(Secrets)
+					}
+					parent[nameLower][key] = value
 				}
 			}
 		}

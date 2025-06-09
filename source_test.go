@@ -49,6 +49,15 @@ func TestLoadEnv(t *testing.T) {
 	err := putFileToEnv()
 	require.NoError(t, err)
 
+	for service, varNames := range testServiceMap {
+		for i, varName := range varNames {
+			placeholderValue := fmt.Sprintf("placeholder_value_%v", i)
+			t.Logf("%s: %s=%s", service, varName, placeholderValue)
+			err = os.Setenv(varName, placeholderValue)
+			require.NoError(t, err)
+		}
+	}
+
 	source := Env{
 		ServiceSecrets: testServiceMap,
 	}
@@ -57,6 +66,7 @@ func TestLoadEnv(t *testing.T) {
 	require.Greater(t, len(secrets), 0)
 	for service, kvs := range secrets {
 		t.Logf("service: %s", service)
+
 		for k, v := range kvs {
 			t.Logf("  %s=%s", k, v)
 		}

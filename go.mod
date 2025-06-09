@@ -4,6 +4,7 @@ go 1.23.0
 
 require (
 	github.com/1password/onepassword-sdk-go v0.2.0
+	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.10.0
 	gopkg.in/yaml.v3 v3.0.1
 )

@@ -9,13 +9,6 @@ import (
 	"net/http"
 )
 
-// ClientSigningPubkey is the environment variable name for
-// the client's signing public key. The sever should already have this
-// via side channel before the client makes a request, and uses this
-// to verify the authenticity of the requestor.
-// In testing, this is set to the client's signing public key.
-var ClientSigningPubkey = "LOCKET_CLIENT_PUBKEY_SIGNING"
-
 // Client makes requests to a locket server, and must know the server address.
 // serverPubkey is the server's encryption public key, and will be fetched
 // on creation of NewClient().

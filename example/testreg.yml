@@ -1,0 +1,5 @@
+- name: SERVICE1
+  keypub: |
+    -----BEGIN ED25519 PUBLIC KEY-----
+    lok6cGvOaPTW3Eq28jEmvP7l8L536K7cv72yiNDdTUU=
+    -----END ED25519 PUBLIC KEY-----

@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 type Server struct {
@@ -69,10 +71,12 @@ func NewServer(opts source, registry []RegEntry) (*Server, error) {
 }
 
 func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
+	id := uuid.New().String()
 	slog.Info("received request",
 		"method", r.Method,
 		"url", r.URL.String(),
 		"ip", r.RemoteAddr,
+		"request_id", id,
 	)
 	switch r.Method {
 	case http.MethodOptions:
@@ -94,18 +98,19 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			"payload", request.Payload,
 			"client_pubkey", request.ClientPubKey,
 			"signature", request.PayloadSignature,
+			"request_id", id,
 		)
 		payload, err := decryptRSA(s.keyRsaPrivate, request.Payload)
 		if err != nil {
-			slog.Error("decrypt payload", "error", err)
+			slog.Error("decrypt payload", "request_id", id, "error", err)
 			http.Error(w, "bad request", http.StatusBadRequest)
 		}
-		slog.Debug("decrypted payload", "payload", payload)
+		slog.Debug("request payload decrypted", "payload", payload, "request_id", id)
 
 		// require from CIDR range DefaultAllowCIDR
 		ip, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
-			slog.Error("split host port", "error", err)
+			slog.Error("split host port", "request_id", id, "error", err)
 			// maybe a 5xx, but probably only because of malformed host addr
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
@@ -113,18 +118,20 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		clientIP := net.ParseIP(ip)
 		_, cidr, err := net.ParseCIDR(Defaults.AllowCIDR)
 		if err != nil {
-			slog.Error("parse CIDR", "error", err)
+			slog.Error("parse CIDR", "request_id", id, "error", err)
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
 		if !cidr.Contains(clientIP) {
 			slog.Warn("IP rejected",
+				"request_id", id,
 				"ip", r.RemoteAddr,
 				"allowCIDR", Defaults.AllowCIDR,
 			)
 			http.Error(w, "forbidden", http.StatusForbidden)
 		} else {
 			slog.Debug("IP allowed",
+				"request_id", id,
 				"ip", r.RemoteAddr,
 				"allowCIDR", Defaults.AllowCIDR,
 			)
@@ -133,11 +140,11 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		// verify signature against registry
 		var matches bool
 		var verifiedService string
-		slog.Info("verifying signature")
+		slog.Debug("verifying signature", "request_id", id)
 		for _, svc := range s.registry {
 			match, err := verifyEd25519(svc.KeyPub, payload, request.PayloadSignature)
 			if err != nil {
-				slog.Error("verify signature", "error", err)
+				slog.Error("verify signature", "request_id", id, "error", err)
 				http.Error(w, "bad request", http.StatusBadRequest)
 			}
 			if match {
@@ -147,33 +154,34 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !matches {
-			slog.Error("signature mismatch")
+			slog.Error("signature mismatch", "request_id", id)
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		} else {
-			slog.Info("signature verified",
+			slog.Debug("signature verified",
 				"service", verifiedService,
-				"ip", r.RemoteAddr,
+				"request_id", id,
 			)
 		}
 
+		slog.Debug("secrets for service", "service", verifiedService, "secrets_qty", len(s.secrets))
 		secrets, ok := s.secrets[verifiedService]
-		slog.Debug("secrets", "service", verifiedService, "secrets", s.secrets)
 		if !ok {
-			slog.Warn("service not found in secrets", "service", verifiedService)
+			slog.Warn("service not found in secrets", "service", verifiedService, "request_id", id)
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
 		value, ok := secrets[payload]
 		if !ok {
+			slog.Warn("secret not found", "service", verifiedService, "key", payload, "request_id", id)
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
 
 		ecryptedSecret, err := encryptRSA(request.ClientPubKey, value)
 		if err != nil {
-			slog.Error("encrypt secret", "error", err)
+			slog.Error("encrypt secret", "request_id", id, "error", err)
 			http.Error(w, "server error", http.StatusInternalServerError)
 			return
 		}
@@ -182,12 +190,19 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		}
 		err = json.NewEncoder(w).Encode(response)
 		if err != nil {
-			slog.Error("encode response", "error", err)
+			slog.Error("encode response", "request_id", id, "error", err)
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
+		slog.Info("sending secret",
+			"service", verifiedService,
+			"name", payload,
+			"ip", r.RemoteAddr,
+			"request_id", id,
+		)
 		w.Header().Set("Content-Type", "application/json")
 	default:
+		slog.Warn("method not allowed", "method", r.Method, "request_id", id, "ip", r.RemoteAddr)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
