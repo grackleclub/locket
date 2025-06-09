@@ -127,7 +127,7 @@ func (d Dotenv) Load() (map[string]Secrets, error) {
 			slog.Debug("skipping invalid line", "line_num", lineNum)
 			return nil, fmt.Errorf("invalid line: %s", line)
 		}
-		key := strings.ToLower(parts[0])
+		key := parts[0]
 		// strip leading and trailing quotes
 		// value := parts[1]
 		value := strings.ReplaceAll(parts[1], `\n`, "\n")
@@ -135,17 +135,18 @@ func (d Dotenv) Load() (map[string]Secrets, error) {
 
 		// load only secrets specified by serviceSecrets
 		for serviceName, secretsList := range d.ServiceSecrets {
+			nameLower := strings.ToLower(serviceName)
 			for _, secret := range secretsList {
 				if key == secret {
 					slog.Debug("loaded secret",
-						"service", serviceName,
+						"service", nameLower,
 						"key", key,
 					)
-					_, ok := allSecrets[serviceName]
+					_, ok := allSecrets[nameLower]
 					if !ok {
-						allSecrets[serviceName] = make(Secrets)
+						allSecrets[nameLower] = make(Secrets)
 					}
-					allSecrets[serviceName][key] = value
+					allSecrets[nameLower][key] = value
 				}
 			}
 		}
