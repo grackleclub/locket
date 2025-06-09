@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -165,9 +166,12 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		slog.Debug("secrets for service", "service", verifiedService, "secrets_qty", len(s.secrets))
-		secrets, ok := s.secrets[verifiedService]
+		secrets, ok := s.secrets[strings.ToLower(verifiedService)]
 		if !ok {
-			slog.Warn("service not found in secrets", "service", verifiedService, "request_id", id)
+			slog.Warn("service not found in registry, check case sensitivity (expects lower)",
+				"service_requesting", verifiedService,
+				"request_id", id,
+			)
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
