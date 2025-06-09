@@ -10,7 +10,7 @@ import (
 
 func Test1password(t *testing.T) {
 	t.Run("load 1password", func(t *testing.T) {
-		var op = Onepass{
+		op := Onepass{
 			Vault: "test",
 		}
 		allSecrets, err := op.load()
@@ -25,5 +25,5 @@ func Test1password(t *testing.T) {
 		}
 	})
 
-	// TODO "update 1password"
+	// TODO: "update 1password with local values to facilitate rotation"
 }

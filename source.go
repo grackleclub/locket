@@ -45,8 +45,6 @@ type Env struct {
 //   - service name: SERVICE1
 //   - secret name: SERVICE1_FOO
 //   - secret value: bar
-//
-// TODO: does this now strip leading and trailing quotes appropriately?
 func (e Env) Load() (map[string]Secrets, error) {
 	environment := os.Environ()
 	slog.Debug("loaded all environment vars", "qty", len(environment))

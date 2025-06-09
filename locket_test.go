@@ -48,7 +48,7 @@ func TestE2E(t *testing.T) {
 	envVars := map[string]string{
 		envVarName: priv,
 	}
-	text := formatDotenv(envVars)
+	text := MarshalDotenv(envVars)
 	t.Logf("formatted env vars: %s", text)
 	// write the env vars to a file
 	f, err := os.CreateTemp("example", "temp-*.env")
@@ -98,11 +98,9 @@ func TestE2E(t *testing.T) {
 	t.Logf("secret: %s", resp)
 }
 
-// formatDotenv formats the environment variables for file.
+// marshalDotenv formats the environment variables for file.
 // Systemd enviroment files and dotenv files are targeted for support.
-// TODO: this should probably be made public if it's necessary to have this be consistent.
-// I'm not sure that it is, and some of this format checking may have been chasing the wrong problem.
-func formatDotenv(envVars map[string]string) string {
+func MarshalDotenv(envVars map[string]string) string {
 	var formatted string
 	for key, value := range envVars {
 		// Escape newlines and double quotes for systemd compatibility
@@ -113,4 +111,25 @@ func formatDotenv(envVars map[string]string) string {
 	slog.Debug("formatted env vars")
 	fmt.Println(formatted)
 	return formatted
+}
+
+func UnmarshalDotenv(text string) map[string]string {
+	envVars := make(map[string]string)
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue // skip empty lines and comments
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue // skip invalid lines
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		value = strings.Trim(value, `"`)
+		value = strings.ReplaceAll(value, "\\n", "\n") // restore newlines
+		envVars[key] = value
+	}
+	return envVars
 }
