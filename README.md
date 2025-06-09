@@ -93,5 +93,4 @@ Server may generate a new public key upon restart. No caching is currently imple
 See [tests](./locket_test.go) for examples, and checkout docstings for extensive descriptions.
 
 ## Future Work
-- [ ] remove lowercase force on package side (consumer problem should not be in this package)
-- [ ] provide local server mock (testcontainer), or create a helper function for a client to be able to check for local env, then dotenv, then try to create client, so that running locally with dotenv present doesn't even try to create a client. make this a single function for the consumer
+See [issues](https://github.com/grackleclub/locket/issues).
