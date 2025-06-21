@@ -2,6 +2,10 @@ module github.com/grackleclub/locket
 
 go 1.23.0
 
+retract (
+	[v1.0.0, v1.1.4] // should not have been published as v1
+)
+
 require (
 	github.com/1password/onepassword-sdk-go v0.2.0
 	github.com/google/uuid v1.6.0
