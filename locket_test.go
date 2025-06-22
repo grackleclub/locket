@@ -108,7 +108,7 @@ func MarshalDotenv(envVars map[string]string) string {
 		escapedValue = strings.ReplaceAll(escapedValue, `"`, `\"`)
 		formatted += fmt.Sprintf("%s=\"%s\"\n", key, escapedValue)
 	}
-	slog.Debug("formatted env vars")
+	log.Debug("formatted env vars")
 	fmt.Println(formatted)
 	return formatted
 }

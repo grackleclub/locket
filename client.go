@@ -60,7 +60,7 @@ func NewClient(serverURL, keyPub, keyPriv string) (*Client, error) {
 
 // fetchServerPubkey fetches the server's encryption public key.
 func (c *Client) fetchServerPubkey() error {
-	slog.Debug("fetching server encryption pubkey", "url", c.serverAddress)
+	log.Debug("fetching server encryption pubkey", "url", c.serverAddress)
 	req, err := http.NewRequest(http.MethodGet, c.serverAddress, nil)
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
@@ -85,7 +85,7 @@ func (c *Client) fetchServerPubkey() error {
 // containing the name of the secret to fetch and the client's own public key
 // (to be used for encrypting the response).
 func (c *Client) FetchSecret(name string) (string, error) {
-	slog.Debug("fetching secret", "name", name)
+	log.Debug("fetching secret", "name", name)
 	err := c.fetchServerPubkey()
 	if err != nil {
 		return "", fmt.Errorf("fetch server pubkey: %w", err)
@@ -107,7 +107,7 @@ func (c *Client) FetchSecret(name string) (string, error) {
 		return "", fmt.Errorf("marshal: %w", err)
 	}
 
-	slog.Debug("sending request",
+	log.Debug("sending request",
 		"name", name,
 		"payload", string(jsonRequest),
 		"url", c.serverAddress,
@@ -138,6 +138,6 @@ func (c *Client) FetchSecret(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("decrypt: %w", err)
 	}
-	slog.Debug("fetched secret", "name", name)
+	log.Debug("fetched secret", "name", name)
 	return plaintext, nil
 }

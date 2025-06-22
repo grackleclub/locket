@@ -95,7 +95,7 @@ func Register(name string, registryPath string) (string, string, error) {
 			return "", "", fmt.Errorf("read registry file: %w", err)
 		}
 	} else {
-		slog.Debug(
+		log.Debug(
 			"registry file does not exist (or other err); will create new one",
 			"registryPath", registryPath,
 			"statError", err,
@@ -106,7 +106,7 @@ func Register(name string, registryPath string) (string, string, error) {
 	replaced := false
 	for i, entry := range registry {
 		if entry.Name == name {
-			slog.Debug("updating existing service in registry",
+			log.Debug("updating existing service in registry",
 				"service", name,
 				"publicKey", publicKey,
 			)
@@ -115,7 +115,7 @@ func Register(name string, registryPath string) (string, string, error) {
 		}
 	}
 	if !replaced {
-		slog.Debug("adding new service to registry",
+		log.Debug("adding new service to registry",
 			"service", name,
 			"publicKey", publicKey,
 		)

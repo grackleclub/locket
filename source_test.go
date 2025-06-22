@@ -2,7 +2,6 @@ package locket
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"path"
 	"testing"
@@ -18,10 +17,6 @@ var (
 		"SERVICE2": {"SERVICE2_FOO", "SERVICE2_BAR", "SERVICE2_SYMBOLS", "SHARED_VAR"},
 	}
 )
-
-func init() {
-	slog.SetLogLoggerLevel(slog.LevelDebug)
-}
 
 func TestLoadFile(t *testing.T) {
 	source := Dotenv{
