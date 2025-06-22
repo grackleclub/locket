@@ -23,11 +23,15 @@ type KeysPrivateSigning map[string]string
 var log *slog.Logger
 
 func init() {
+	var opts slog.HandlerOptions
 	if testing.Testing() {
 		Defaults.AllowCIDR = "127.0.0.1/32"
+		opts.Level = slog.LevelDebug
+		opts.AddSource = true
 	}
 
-	log, err := logger.New(slog.HandlerOptions{})
+	var err error
+	log, err = logger.New(opts)
 	if err != nil {
 		panic("failed to create logger: " + err.Error())
 	}

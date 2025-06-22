@@ -2,7 +2,6 @@ package locket
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
