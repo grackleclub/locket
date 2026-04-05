@@ -41,6 +41,8 @@ func TestFileRegistryReadWrite(t *testing.T) {
 func TestFileRegistryRegister(t *testing.T) {
 	testRegistry := path.Join("example", "test-registry.yml")
 	reg := FileRegistry{Path: testRegistry}
+	defer os.Remove(testRegistry)
+
 	services := []string{"service A", "service B", "service C"}
 
 	for _, service := range services {
@@ -69,9 +71,6 @@ func TestFileRegistryRegister(t *testing.T) {
 	for _, e := range entries {
 		t.Logf("%s\n%s", e.Name, e.KeyPub)
 	}
-
-	err = os.Remove(testRegistry)
-	require.NoError(t, err)
 }
 
 func TestFileRegistryDelete(t *testing.T) {

@@ -128,12 +128,6 @@ func (f FileRegistry) write(entries []RegEntry) error {
 	}
 	defer file.Close()
 
-	for i, e := range entries {
-		entries[i].Name = strings.TrimSuffix(
-			filepath.Base(e.Name), ".env",
-		)
-	}
-
 	b, err := yaml.Marshal(entries)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)

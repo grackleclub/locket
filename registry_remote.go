@@ -47,7 +47,7 @@ func (r RemoteRegistry) Entries() ([]RegEntry, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
+		return nil, fmt.Errorf("status %s", resp.Status)
 	}
 
 	var entries []RegEntry
@@ -80,7 +80,7 @@ func (r RemoteRegistry) Upsert(entry RegEntry) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d", resp.StatusCode)
+		return fmt.Errorf("status %s", resp.Status)
 	}
 	return nil
 }
@@ -107,7 +107,7 @@ func (r RemoteRegistry) Delete(name string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status %d", resp.StatusCode)
+		return fmt.Errorf("status %s", resp.Status)
 	}
 	return nil
 }

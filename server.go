@@ -68,6 +68,9 @@ func NewServer(
 	pollInterval time.Duration,
 	allow AllowRequestFunc,
 ) (*Server, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if reg == nil {
 		return nil, fmt.Errorf("registry must not be nil")
 	}
@@ -204,6 +207,16 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePost(
 	w http.ResponseWriter, r *http.Request, id string,
 ) {
+	if err := s.allow(r); err != nil {
+		log.Warn("request denied",
+			"request_id", id,
+			"ip", r.RemoteAddr,
+			"error", err,
+		)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
 	const maxBody = 1 << 20
 	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 
@@ -238,16 +251,6 @@ func (s *Server) handlePost(
 	log.Debug("request payload decrypted",
 		"payload", payload, "request_id", id,
 	)
-
-	if err := s.allow(r); err != nil {
-		log.Warn("request denied",
-			"request_id", id,
-			"ip", r.RemoteAddr,
-			"error", err,
-		)
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
 
 	// verify signature against registry
 	registry := s.registrySnapshot()

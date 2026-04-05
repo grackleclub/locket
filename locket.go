@@ -23,15 +23,6 @@ type defaults struct {
 //   - DELETE: remove an entry (RegEntry JSON body with name)
 var PathRegistry = "/locket/registry"
 
-// Environment variable names used by locket clients and servers.
-var (
-	EnvURL         = "LOCKET_URL"            // locket server URL
-	EnvPublic      = "LOCKET_PUBLIC"         // ed25519 public signing key
-	EnvPrivate     = "LOCKET_PRIVATE"        // ed25519 private signing key
-	EnvRegistryURL = "LOCKET_REGISTRY_URL"   // registry API base URL
-	EnvRegistryToken = "LOCKET_REGISTRY_TOKEN" // registry API auth token
-)
-
 // map[serviceName]keyPrivateSigning
 type KeysPrivateSigning map[string]string
 
