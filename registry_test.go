@@ -21,11 +21,15 @@ var testRegistryItems = []RegEntry{
 
 var testExampleReg = path.Join("example", "registry.yml")
 
-func TestReadWrite(t *testing.T) {
-	err := WriteRegistry(testExampleReg, testRegistryItems)
-	require.NoError(t, err)
+func TestFileRegistryReadWrite(t *testing.T) {
+	reg := FileRegistry{Path: testExampleReg}
 
-	items, err := ReadRegistryFile(testExampleReg)
+	for _, item := range testRegistryItems {
+		err := reg.Upsert(item)
+		require.NoError(t, err)
+	}
+
+	items, err := reg.Entries()
 	require.NoError(t, err)
 	require.NotNil(t, items)
 	require.Equal(t, testRegistryItems, items)
@@ -34,36 +38,58 @@ func TestReadWrite(t *testing.T) {
 	}
 }
 
-func TestRegister(t *testing.T) {
+func TestFileRegistryRegister(t *testing.T) {
 	testRegistry := path.Join("example", "test-registry.yml")
+	reg := FileRegistry{Path: testRegistry}
 	services := []string{"service A", "service B", "service C"}
-	// no file exists
+
 	for _, service := range services {
-		pub, priv, err := Register(service, testRegistry)
+		pub, priv, err := reg.Register(service)
 		require.NoError(t, err)
 		require.NotEmpty(t, pub)
 		require.NotEmpty(t, priv)
 		t.Logf("Registered %q", service)
 
-		registry, err := ReadRegistryFile(testRegistry)
+		entries, err := reg.Entries()
 		require.NoError(t, err)
-		for _, item := range registry {
-			t.Logf("%s\n%s", item.Name, item.KeyPub)
+		for _, e := range entries {
+			t.Logf("%s\n%s", e.Name, e.KeyPub)
 		}
 	}
-	// replace/update/upsert service A with new key
-	pub, priv, err := Register(services[0], testRegistry)
+
+	// upsert service A with new key
+	pub, priv, err := reg.Register(services[0])
 	require.NoError(t, err)
 	require.NotEmpty(t, pub)
 	require.NotEmpty(t, priv)
 	t.Logf("Updated %q", services[0])
-	registry, err := ReadRegistryFile(testRegistry)
+
+	entries, err := reg.Entries()
 	require.NoError(t, err)
-	for _, item := range registry {
-		t.Logf("%s\n%s", item.Name, item.KeyPub)
+	for _, e := range entries {
+		t.Logf("%s\n%s", e.Name, e.KeyPub)
 	}
-	// cleanup file
+
 	err = os.Remove(testRegistry)
 	require.NoError(t, err)
-	t.Logf("Removed test registry file: %s", testRegistry)
+}
+
+func TestFileRegistryDelete(t *testing.T) {
+	testRegistry := path.Join("example", "test-delete.yml")
+	reg := FileRegistry{Path: testRegistry}
+	defer os.Remove(testRegistry)
+
+	require.NoError(t, reg.Upsert(RegEntry{Name: "a", KeyPub: "k1"}))
+	require.NoError(t, reg.Upsert(RegEntry{Name: "b", KeyPub: "k2"}))
+
+	entries, err := reg.Entries()
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+
+	require.NoError(t, reg.Delete("a"))
+
+	entries, err = reg.Entries()
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "b", entries[0].Name)
 }

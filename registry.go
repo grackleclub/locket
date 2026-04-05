@@ -9,125 +9,125 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-/*
-Registry is the process by which pre-computed signing keys (ed25519)
-are created before deploying either server or client.
-	- Public signing keys for all allowed services are provided to the server via .yml
-	- Public and private keys are provided to the client for signing requests.
-	- Separately, both client and server create encryption keys on startup.
-*/
-
-// RegEntry is a single registry item,
-// representing a single client which
-// the server should recognize and authorize
+// RegEntry is a single authorized client, identified by name
+// and authenticated by its ed25519 public signing key.
 type RegEntry struct {
-	Name   string `yaml:"name"`
-	KeyPub string `yaml:"keypub"`
+	Name   string `yaml:"name"   json:"name"`
+	KeyPub string `yaml:"keypub" json:"keypub"`
 }
 
-// WriteRegistry creates a yaml file with a registry of allowed clients.
-func WriteRegistry(path string, data []RegEntry) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("create file: %w", err)
-	}
-
-	for i, item := range data {
-		data[i].Name = strings.TrimSuffix(filepath.Base(item.Name), ".env")
-	}
-
-	b, err := yaml.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
-	}
-	_, err = f.Write(b)
-	if err != nil {
-		return fmt.Errorf("write file: %w", err)
-	}
-	return nil
+// Registry reads and writes authorized client entries.
+// Implementations include FileRegistry (local YAML) and
+// RemoteRegistry (HTTP API).
+type Registry interface {
+	// Entries returns all authorized clients.
+	Entries() ([]RegEntry, error)
+	// Upsert inserts or updates a client entry by name.
+	Upsert(RegEntry) error
+	// Delete removes a client entry by name.
+	Delete(name string) error
 }
 
-// ReadRegistryFile turns a yaml file into a list of RegEntry
-// for use in server authenticating client requests.
-func ReadRegistryFile(filepath string) ([]RegEntry, error) {
-	f, err := os.ReadFile(filepath)
+// FileRegistry is a Registry backed by a local YAML file.
+type FileRegistry struct {
+	Path string
+}
+
+// Entries reads all authorized clients from the YAML file.
+func (f FileRegistry) Entries() ([]RegEntry, error) {
+	b, err := os.ReadFile(f.Path)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}
 	var out []RegEntry
-	err = yaml.Unmarshal(f, &out)
+	err = yaml.Unmarshal(b, &out)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 	return out, nil
 }
 
-// UnmarshalRegistry turns a byte slice into a list of RegEntry
-// for use in server authenticating client requests.
-// Bytes format easier for embed.FS
-func UnmarshalRegistry(bytes []byte) ([]RegEntry, error) {
-	var out []RegEntry
-	err := yaml.Unmarshal(bytes, &out)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal: %w", err)
-	}
-	return out, nil
-}
+// Upsert inserts or updates a client entry in the YAML file.
+// If the file does not exist, it is created.
+func (f FileRegistry) Upsert(entry RegEntry) error {
+	entry.Name = strings.TrimSuffix(
+		filepath.Base(entry.Name), ".env",
+	)
 
-// Register reads the existing registry file, upserts service key, and rewrites.
-// If the registry file does not exist, it will be created.
-// If no registry for the named service exists, a new entry will be created.
-// An existing entry for the named service will be updated with new public key.
-// Each new call of Register will generate new key pair, returning:
-// public key, private key, or any error.
-func Register(name string, registryPath string) (string, string, error) {
-	publicKey, privateKey, err := NewPairEd25519()
-	if err != nil {
-		return "", "", fmt.Errorf("generate key pair: %w", err)
-	}
-
-	var registry []RegEntry
-	_, err = os.Stat(registryPath)
-	if err == nil {
-		registry, err = ReadRegistryFile(registryPath)
+	var entries []RegEntry
+	if _, err := os.Stat(f.Path); err == nil {
+		entries, err = f.Entries()
 		if err != nil {
-			return "", "", fmt.Errorf("read registry file: %w", err)
+			return fmt.Errorf("read existing: %w", err)
 		}
-	} else {
-		log.Debug(
-			"registry file does not exist (or other err); will create new one",
-			"registryPath", registryPath,
-			"statError", err,
-		)
 	}
 
-	// check if the service already exists in the registry
 	replaced := false
-	for i, entry := range registry {
-		if entry.Name == name {
-			log.Debug("updating existing service in registry",
-				"service", name,
-				"publicKey", publicKey,
-			)
-			registry[i].KeyPub = publicKey
+	for i, e := range entries {
+		if e.Name == entry.Name {
+			entries[i].KeyPub = entry.KeyPub
 			replaced = true
+			break
 		}
 	}
 	if !replaced {
-		log.Debug("adding new service to registry",
-			"service", name,
-			"publicKey", publicKey,
-		)
-		registry = append(registry, RegEntry{
-			Name:   name,
-			KeyPub: publicKey,
-		})
+		entries = append(entries, entry)
 	}
 
-	// write the updated registry
-	err = WriteRegistry(registryPath, registry)
+	return f.write(entries)
+}
+
+// Delete removes a client entry by name from the YAML file.
+func (f FileRegistry) Delete(name string) error {
+	entries, err := f.Entries()
 	if err != nil {
-		return "", "", fmt.Errorf("write updated registry: %w", err)
+		return fmt.Errorf("read existing: %w", err)
 	}
-	return publicKey, privateKey, nil
+	filtered := entries[:0]
+	for _, e := range entries {
+		if e.Name != name {
+			filtered = append(filtered, e)
+		}
+	}
+	return f.write(filtered)
+}
+
+// Register generates a new ed25519 signing keypair, upserts the
+// public key into the YAML file, and returns the keypair.
+func (f FileRegistry) Register(name string) (string, string, error) {
+	pub, priv, err := NewPairEd25519()
+	if err != nil {
+		return "", "", fmt.Errorf("generate key pair: %w", err)
+	}
+	err = f.Upsert(RegEntry{Name: name, KeyPub: pub})
+	if err != nil {
+		return "", "", fmt.Errorf("upsert: %w", err)
+	}
+	return pub, priv, nil
+}
+
+// write serializes entries to the YAML file, creating or
+// truncating it as needed.
+func (f FileRegistry) write(entries []RegEntry) error {
+	file, err := os.Create(f.Path)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer file.Close()
+
+	for i, e := range entries {
+		entries[i].Name = strings.TrimSuffix(
+			filepath.Base(e.Name), ".env",
+		)
+	}
+
+	b, err := yaml.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+	_, err = file.Write(b)
+	if err != nil {
+		return fmt.Errorf("write file: %w", err)
+	}
+	return nil
 }

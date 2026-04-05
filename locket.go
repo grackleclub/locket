@@ -17,6 +17,12 @@ type defaults struct {
 	BitsizeRSA int    // bit size passed to RSA creation for client and server encryption
 }
 
+// PathRegistry is the API endpoint for registry operations.
+//   - GET: list all entries
+//   - POST: upsert an entry (RegEntry JSON body)
+//   - DELETE: remove an entry (RegEntry JSON body with name)
+var PathRegistry = "/locket/registry"
+
 // map[serviceName]keyPrivateSigning
 type KeysPrivateSigning map[string]string
 

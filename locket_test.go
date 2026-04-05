@@ -17,24 +17,18 @@ func TestE2E(t *testing.T) {
 	pub, priv, err := NewPairEd25519()
 	require.NoError(t, err)
 
-	reg := []RegEntry{{
-		Name:   "SERVICE1",
-		KeyPub: pub,
-	}}
 	testReg := path.Join("example", "testreg.yml")
-	err = WriteRegistry(testReg, reg)
+	fileReg := FileRegistry{Path: testReg}
+	err = fileReg.Upsert(RegEntry{Name: "SERVICE1", KeyPub: pub})
 	require.NoError(t, err)
+	defer os.Remove(testReg)
 
 	source := Dotenv{
 		ServiceSecrets: testServiceMap,
 		Path:           path.Join("example", ".env"),
 	}
-	registry, err := ReadRegistryFile(testReg)
-	require.NoError(t, err)
-	require.NotNil(t, registry)
-	require.Greater(t, len(registry), 0)
 
-	server, err := NewServer(source, registry)
+	server, err := NewServer(source, fileReg, 0, nil)
 	require.NoError(t, err)
 
 	handler := httptest.NewServer(http.HandlerFunc(server.Handler))
