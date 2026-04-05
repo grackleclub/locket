@@ -19,10 +19,10 @@ var testRegistryItems = []RegEntry{
 	},
 }
 
-var testExampleReg = path.Join("example", "registry.yml")
-
 func TestFileRegistryReadWrite(t *testing.T) {
-	reg := FileRegistry{Path: testExampleReg}
+	p := path.Join("example", "test-readwrite.yml")
+	reg := FileRegistry{Path: p}
+	defer os.Remove(p)
 
 	for _, item := range testRegistryItems {
 		err := reg.Upsert(item)

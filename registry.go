@@ -9,8 +9,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// RegEntry is a single authorized client, identified by name
-// and authenticated by its ed25519 public signing key.
+/*
+Registry is the process by which pre-computed signing keys (ed25519)
+are created before deploying either server or client.
+  - Public signing keys for all allowed services are provided to the server.
+  - Public and private keys are provided to the client for signing requests.
+  - Separately, both client and server create encryption keys on startup.
+*/
+
+// RegEntry is a single registry item,
+// representing a single client which
+// the server should recognize and authorize.
 type RegEntry struct {
 	Name   string `yaml:"name"   json:"name"`
 	KeyPub string `yaml:"keypub" json:"keypub"`
