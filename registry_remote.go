@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // RemoteRegistry is a Registry backed by an HTTP API.
@@ -12,8 +13,17 @@ import (
 // PathRegistry is appended for all operations.
 // Token, if set, is sent as an X-Auth-Token header.
 type RemoteRegistry struct {
-	URL   string
-	Token string
+	URL    string
+	Token  string
+	Client *http.Client
+}
+
+// client returns the configured HTTP client, or a default with timeout.
+func (r RemoteRegistry) client() *http.Client {
+	if r.Client != nil {
+		return r.Client
+	}
+	return &http.Client{Timeout: 10 * time.Second}
 }
 
 // endpoint returns the full URL to the registry API.
@@ -31,7 +41,7 @@ func (r RemoteRegistry) Entries() ([]RegEntry, error) {
 	}
 	r.setHeaders(req)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := r.client().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("do request: %w", err)
 	}
@@ -64,7 +74,7 @@ func (r RemoteRegistry) Upsert(entry RegEntry) error {
 	r.setHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := r.client().Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
@@ -91,7 +101,7 @@ func (r RemoteRegistry) Delete(name string) error {
 	r.setHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := r.client().Do(req)
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}

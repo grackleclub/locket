@@ -1,6 +1,7 @@
 package locket
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +29,7 @@ func TestE2E(t *testing.T) {
 		Path:           path.Join("example", ".env"),
 	}
 
-	server, err := NewServer(source, fileReg, 0, nil)
+	server, err := NewServer(context.Background(), source, fileReg, 0, nil)
 	require.NoError(t, err)
 
 	handler := httptest.NewServer(http.HandlerFunc(server.Handler))

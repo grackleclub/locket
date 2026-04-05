@@ -1,6 +1,7 @@
 package locket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -20,16 +21,17 @@ type AllowRequestFunc func(r *http.Request) error
 // the given CIDR range only. This is the default policy when
 // none is provided to NewServer.
 func AllowCIDR(cidr string) AllowRequestFunc {
+	_, network, cidrErr := net.ParseCIDR(cidr)
+
 	return func(r *http.Request) error {
+		if cidrErr != nil {
+			return fmt.Errorf("parse CIDR: %w", cidrErr)
+		}
 		ip, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			return fmt.Errorf("parse remote addr: %w", err)
 		}
 		clientIP := net.ParseIP(ip)
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return fmt.Errorf("parse CIDR: %w", err)
-		}
 		if !network.Contains(clientIP) {
 			return fmt.Errorf("IP %s not in %s", ip, cidr)
 		}
@@ -60,11 +62,16 @@ type kvResponse struct {
 // is positive, the server refreshes its registry in the background.
 // If allow is nil, AllowCIDR(Defaults.AllowCIDR) is used.
 func NewServer(
+	ctx context.Context,
 	opts source,
 	reg Registry,
 	pollInterval time.Duration,
 	allow AllowRequestFunc,
 ) (*Server, error) {
+	if reg == nil {
+		return nil, fmt.Errorf("registry must not be nil")
+	}
+
 	rsaPublic, rsaPrivate, err := newPairRSA(Defaults.BitsizeRSA)
 	if err != nil {
 		return nil, fmt.Errorf("generate key pair: %w", err)
@@ -122,26 +129,31 @@ func NewServer(
 	}
 
 	if pollInterval > 0 {
-		go server.poll(pollInterval)
+		go server.poll(ctx, pollInterval)
 	}
 
 	return server, nil
 }
 
-// poll refreshes the registry on a fixed interval.
-func (s *Server) poll(interval time.Duration) {
+// poll refreshes the registry on a fixed interval until ctx is cancelled.
+func (s *Server) poll(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	for range ticker.C {
-		entries, err := s.reg.Entries()
-		if err != nil {
-			log.Error("registry poll failed", "error", err)
-			continue
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			entries, err := s.reg.Entries()
+			if err != nil {
+				log.Error("registry poll failed", "error", err)
+				continue
+			}
+			s.mu.Lock()
+			s.entries = entries
+			s.mu.Unlock()
+			log.Debug("registry refreshed", "entries", len(entries))
 		}
-		s.mu.Lock()
-		s.entries = entries
-		s.mu.Unlock()
-		log.Debug("registry refreshed", "entries", len(entries))
 	}
 }
 
@@ -192,9 +204,19 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePost(
 	w http.ResponseWriter, r *http.Request, id string,
 ) {
+	const maxBody = 1 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+
 	var request kvRequest
 	err := json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			http.Error(w,
+				"request entity too large",
+				http.StatusRequestEntityTooLarge,
+			)
+			return
+		}
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}

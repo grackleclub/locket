@@ -64,11 +64,15 @@ func (f FileRegistry) Upsert(entry RegEntry) error {
 	)
 
 	var entries []RegEntry
-	if _, err := os.Stat(f.Path); err == nil {
+	_, err := os.Stat(f.Path)
+	switch {
+	case err == nil:
 		entries, err = f.Entries()
 		if err != nil {
 			return fmt.Errorf("read existing: %w", err)
 		}
+	case !os.IsNotExist(err):
+		return fmt.Errorf("stat file: %w", err)
 	}
 
 	replaced := false

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/turk/dotfiles/**)",
+      "Read(//home/turk/.local/bin/**)"
+    ]
+  }
+}
