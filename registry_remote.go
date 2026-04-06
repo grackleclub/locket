@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -26,16 +27,23 @@ func (r RemoteRegistry) client() *http.Client {
 	return &http.Client{Timeout: 10 * time.Second}
 }
 
-// endpoint returns the full URL to the registry API.
-func (r RemoteRegistry) endpoint() string {
-	return r.URL + PathRegistry
+// endpoint returns the full URL to the registry API,
+// safely joining the base URL and PathRegistry.
+func (r RemoteRegistry) endpoint() (string, error) {
+	joined, err := url.JoinPath(r.URL, PathRegistry)
+	if err != nil {
+		return "", fmt.Errorf("join url: %w", err)
+	}
+	return joined, nil
 }
 
 // Entries fetches all authorized clients from the remote API.
 func (r RemoteRegistry) Entries() ([]RegEntry, error) {
-	req, err := http.NewRequest(
-		http.MethodGet, r.endpoint(), nil,
-	)
+	endpoint, err := r.endpoint()
+	if err != nil {
+		return nil, fmt.Errorf("endpoint: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("new request: %w", err)
 	}
@@ -46,7 +54,7 @@ func (r RemoteRegistry) Entries() ([]RegEntry, error) {
 		return nil, fmt.Errorf("do request: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("status %s", resp.Status)
 	}
 
@@ -65,8 +73,12 @@ func (r RemoteRegistry) Upsert(entry RegEntry) error {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
+	endpoint, err := r.endpoint()
+	if err != nil {
+		return fmt.Errorf("endpoint: %w", err)
+	}
 	req, err := http.NewRequest(
-		http.MethodPost, r.endpoint(), bytes.NewReader(b),
+		http.MethodPost, endpoint, bytes.NewReader(b),
 	)
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
@@ -79,7 +91,7 @@ func (r RemoteRegistry) Upsert(entry RegEntry) error {
 		return fmt.Errorf("do request: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("status %s", resp.Status)
 	}
 	return nil
@@ -92,8 +104,12 @@ func (r RemoteRegistry) Delete(name string) error {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
+	endpoint, err := r.endpoint()
+	if err != nil {
+		return fmt.Errorf("endpoint: %w", err)
+	}
 	req, err := http.NewRequest(
-		http.MethodDelete, r.endpoint(), bytes.NewReader(b),
+		http.MethodDelete, endpoint, bytes.NewReader(b),
 	)
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
@@ -106,7 +122,7 @@ func (r RemoteRegistry) Delete(name string) error {
 		return fmt.Errorf("do request: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("status %s", resp.Status)
 	}
 	return nil
