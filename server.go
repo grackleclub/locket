@@ -32,6 +32,9 @@ func AllowCIDR(cidr string) AllowRequestFunc {
 			return fmt.Errorf("parse remote addr: %w", err)
 		}
 		clientIP := net.ParseIP(ip)
+		if clientIP == nil {
+			return fmt.Errorf("parse ip: %q", ip)
+		}
 		if !network.Contains(clientIP) {
 			return fmt.Errorf("IP %s not in %s", ip, cidr)
 		}
@@ -113,7 +116,7 @@ func NewServer(
 		}
 		if opts.Path == "" {
 			return nil, fmt.Errorf(
-				"at least one path required to *.env file",
+				"opts.Path must be set to the .env file path",
 			)
 		}
 		secrets, err := opts.Load()

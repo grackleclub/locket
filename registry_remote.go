@@ -28,11 +28,21 @@ func (r RemoteRegistry) client() *http.Client {
 }
 
 // endpoint returns the full URL to the registry API,
-// safely joining the base URL and PathRegistry.
+// safely joining the base URL and PathRegistry. It validates
+// that r.URL is an absolute URL with scheme and host.
 func (r RemoteRegistry) endpoint() (string, error) {
 	joined, err := url.JoinPath(r.URL, PathRegistry)
 	if err != nil {
 		return "", fmt.Errorf("join url: %w", err)
+	}
+	u, err := url.Parse(joined)
+	if err != nil {
+		return "", fmt.Errorf("parse url: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf(
+			"invalid base URL %q: missing scheme or host", r.URL,
+		)
 	}
 	return joined, nil
 }

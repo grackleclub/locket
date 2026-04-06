@@ -104,6 +104,13 @@ func TestRemoteRegistryRegister(t *testing.T) {
 	require.Equal(t, pub, seen.KeyPub)
 }
 
+func TestRemoteRegistryInvalidBaseURL(t *testing.T) {
+	reg := RemoteRegistry{URL: "api:8888"}
+	_, err := reg.Entries()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "missing scheme or host")
+}
+
 func TestRemoteRegistryNon2xx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
