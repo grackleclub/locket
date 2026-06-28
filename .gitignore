@@ -1,0 +1,3 @@
+temp-*.env
+plan.md
+.claude/settings.local.json

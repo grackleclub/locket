@@ -1,8 +1,6 @@
 package locket
 
 import (
-	"os"
-	"path"
 	"path/filepath"
 	"testing"
 
@@ -20,13 +18,15 @@ var testRegistryItems = []RegEntry{
 	},
 }
 
-var testExampleReg = path.Join("example", "registry.yml")
+func TestFileRegistryReadWrite(t *testing.T) {
+	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
 
-func TestReadWrite(t *testing.T) {
-	err := WriteRegistry(testExampleReg, testRegistryItems)
-	require.NoError(t, err)
+	for _, item := range testRegistryItems {
+		err := reg.Upsert(item)
+		require.NoError(t, err)
+	}
 
-	items, err := ReadRegistryFile(testExampleReg)
+	items, err := reg.Entries()
 	require.NoError(t, err)
 	require.NotNil(t, items)
 	require.Equal(t, testRegistryItems, items)
@@ -35,61 +35,86 @@ func TestReadWrite(t *testing.T) {
 	}
 }
 
-// TestRegisterNoDuplicate is the regression test for Register name
-// normalization: re-registering a service (including with a .env suffix that
-// WriteRegistry strips) must update the existing entry rather than append a
-// duplicate.
-func TestRegisterNoDuplicate(t *testing.T) {
-	reg := filepath.Join(t.TempDir(), "registry.yml")
+// TestFileRegistryUpsertDedup verifies Upsert dedups on the exact name
+// (verbatim, case-sensitive) per the cloud registry contract: re-registering
+// the same name updates the entry in place, while a different name (e.g. one
+// with a .env suffix) is a distinct entry — Upsert does not normalize.
+func TestFileRegistryUpsertDedup(t *testing.T) {
+	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
 
-	_, _, err := Register("svc.env", reg)
+	pub1, _, err := reg.Register("svc")
 	require.NoError(t, err)
 
-	pub2, _, err := Register("svc.env", reg)
+	// re-registering the exact name updates in place (no duplicate)
+	pub2, _, err := reg.Register("svc")
 	require.NoError(t, err)
 
-	// the plain name normalizes to the same entry too
-	_, _, err = Register("svc", reg)
+	// a different, un-normalized name is a distinct entry
+	_, _, err = reg.Register("svc.env")
 	require.NoError(t, err)
 
-	entries, err := ReadRegistryFile(reg)
+	entries, err := reg.Entries()
 	require.NoError(t, err)
-	require.Len(t, entries, 1, "re-registering the same service must not duplicate")
-	require.Equal(t, "svc", entries[0].Name)
-	// last write wins on the key
-	require.NotEqual(t, pub2, entries[0].KeyPub)
+	require.Len(t, entries, 2,
+		"exact-name re-register dedups; a distinct name does not")
+
+	byName := make(map[string]string, len(entries))
+	for _, e := range entries {
+		byName[e.Name] = e.KeyPub
+	}
+	require.Contains(t, byName, "svc")
+	require.Contains(t, byName, "svc.env")
+	require.Equal(t, pub2, byName["svc"], "last write wins for the exact name")
+	require.NotEqual(t, pub1, pub2)
 }
 
-func TestRegister(t *testing.T) {
-	testRegistry := path.Join("example", "test-registry.yml")
+func TestFileRegistryRegister(t *testing.T) {
+	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
+
 	services := []string{"service A", "service B", "service C"}
-	// no file exists
+
 	for _, service := range services {
-		pub, priv, err := Register(service, testRegistry)
+		pub, priv, err := reg.Register(service)
 		require.NoError(t, err)
 		require.NotEmpty(t, pub)
 		require.NotEmpty(t, priv)
 		t.Logf("Registered %q", service)
 
-		registry, err := ReadRegistryFile(testRegistry)
+		entries, err := reg.Entries()
 		require.NoError(t, err)
-		for _, item := range registry {
-			t.Logf("%s\n%s", item.Name, item.KeyPub)
+		for _, e := range entries {
+			t.Logf("%s\n%s", e.Name, e.KeyPub)
 		}
 	}
-	// replace/update/upsert service A with new key
-	pub, priv, err := Register(services[0], testRegistry)
+
+	// upsert service A with new key
+	pub, priv, err := reg.Register(services[0])
 	require.NoError(t, err)
 	require.NotEmpty(t, pub)
 	require.NotEmpty(t, priv)
 	t.Logf("Updated %q", services[0])
-	registry, err := ReadRegistryFile(testRegistry)
+
+	entries, err := reg.Entries()
 	require.NoError(t, err)
-	for _, item := range registry {
-		t.Logf("%s\n%s", item.Name, item.KeyPub)
+	for _, e := range entries {
+		t.Logf("%s\n%s", e.Name, e.KeyPub)
 	}
-	// cleanup file
-	err = os.Remove(testRegistry)
+}
+
+func TestFileRegistryDelete(t *testing.T) {
+	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
+
+	require.NoError(t, reg.Upsert(RegEntry{Name: "a", KeyPub: "k1"}))
+	require.NoError(t, reg.Upsert(RegEntry{Name: "b", KeyPub: "k2"}))
+
+	entries, err := reg.Entries()
 	require.NoError(t, err)
-	t.Logf("Removed test registry file: %s", testRegistry)
+	require.Len(t, entries, 2)
+
+	require.NoError(t, reg.Delete("a"))
+
+	entries, err = reg.Entries()
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "b", entries[0].Name)
 }

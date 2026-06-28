@@ -1,6 +1,7 @@
 package locket
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -12,12 +13,33 @@ import (
 	"github.com/google/uuid"
 )
 
-type Server struct {
-	secrets       map[string]Secrets // secret k/v pairs
-	registry      []RegEntry         // registered services
-	keyRsaPublic  string             // encryption public key
-	keyRsaPrivate string             // encryption private key
-	seen          *nonceCache        // request nonces seen within the replay window
+// AllowRequestFunc decides whether an HTTP request is permitted.
+// Return nil to allow, or an error to deny with 403.
+type AllowRequestFunc func(r *http.Request) error
+
+// AllowCIDR returns an AllowRequestFunc that permits requests from
+// the given CIDR range only. This is the default policy when
+// none is provided to NewServer.
+func AllowCIDR(cidr string) AllowRequestFunc {
+	_, network, cidrErr := net.ParseCIDR(cidr)
+
+	return func(r *http.Request) error {
+		if cidrErr != nil {
+			return fmt.Errorf("parse CIDR: %w", cidrErr)
+		}
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			return fmt.Errorf("parse remote addr: %w", err)
+		}
+		clientIP := net.ParseIP(ip)
+		if clientIP == nil {
+			return fmt.Errorf("parse ip: %q", ip)
+		}
+		if !network.Contains(clientIP) {
+			return fmt.Errorf("IP %s not in %s", ip, cidr)
+		}
+		return nil
+	}
 }
 
 // nonceCache tracks request nonces so the server can reject exact replays
@@ -84,22 +106,71 @@ func (c *nonceCache) close() {
 	c.stopOnce.Do(func() { close(c.stop) })
 }
 
-// kvResponse is the server's response to the client's request,
-// containing the encrypted secret value.
+// Server serves secrets to authenticated clients over HTTP.
+// It validates client requests against a Registry of authorized
+// signing keys, refreshing the registry on a configurable interval.
+type Server struct {
+	secrets       map[string]Secrets
+	reg           Registry
+	entries       []RegEntry
+	mu            sync.RWMutex
+	allow         AllowRequestFunc
+	keyRsaPublic  string
+	keyRsaPrivate string
+	seen          *nonceCache
+	cancel        context.CancelFunc // stops the registry poll goroutine
+}
+
+// kvResponse is the server's encrypted secret response.
 type kvResponse struct {
 	Payload string `json:"payload"`
 }
 
-// NewServer sets up a new secrets server when provided source options
-// and registry of allowed services (and their public signing keys),
-// expected to be read from file or embed before calling NewServer().
-func NewServer(opts source, registry []RegEntry) (*Server, error) {
+// NewServer creates a Server, loading secrets from the given source
+// and authorized clients from the given Registry. If pollInterval
+// is positive, the server refreshes its registry in the background.
+// If allow is nil, AllowCIDR(Defaults.AllowCIDR) is used.
+func NewServer(
+	ctx context.Context,
+	opts source,
+	reg Registry,
+	pollInterval time.Duration,
+	allow AllowRequestFunc,
+) (*Server, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if reg == nil {
+		return nil, fmt.Errorf("registry must not be nil")
+	}
+
 	rsaPublic, rsaPrivate, err := newPairRSA(Defaults.BitsizeRSA)
 	if err != nil {
 		return nil, fmt.Errorf("generate key pair: %w", err)
 	}
-	server := Server{
-		registry:      registry,
+
+	entries, err := reg.Entries()
+	if err != nil {
+		return nil, fmt.Errorf("initial registry fetch: %w", err)
+	}
+	log.Info("registry loaded", "entries", len(entries))
+
+	if allow == nil {
+		// validate up front so a bad Defaults.AllowCIDR fails fast here
+		// instead of silently rejecting every request with 403 later.
+		if _, _, err := net.ParseCIDR(Defaults.AllowCIDR); err != nil {
+			return nil, fmt.Errorf(
+				"invalid default allow CIDR %q: %w",
+				Defaults.AllowCIDR, err,
+			)
+		}
+		allow = AllowCIDR(Defaults.AllowCIDR)
+	}
+
+	server := &Server{
+		reg:           reg,
+		entries:       entries,
+		allow:         allow,
 		keyRsaPublic:  rsaPublic,
 		keyRsaPrivate: rsaPrivate,
 		seen:          newNonceCache(Defaults.MaxClockSkew),
@@ -112,38 +183,88 @@ func NewServer(opts source, registry []RegEntry) (*Server, error) {
 			return nil, fmt.Errorf("load env: %w", err)
 		}
 		server.secrets = secrets
-		return &server, nil
 	case Dotenv:
 		if len(opts.ServiceSecrets) == 0 {
-			return nil, fmt.Errorf("at least one service required to load *.env file")
+			return nil, fmt.Errorf(
+				"at least one service required to load *.env file",
+			)
 		}
 		if opts.Path == "" {
-			return nil, fmt.Errorf("at least one path required to *.env file")
+			return nil, fmt.Errorf(
+				"opts.Path must be set to the .env file path",
+			)
 		}
 		secrets, err := opts.Load()
 		if err != nil {
 			return nil, fmt.Errorf("load .env file: %w", err)
 		}
 		server.secrets = secrets
-		return &server, nil
 	case Onepass:
 		secrets, err := opts.Load()
 		if err != nil {
 			return nil, fmt.Errorf("load onepass: %w", err)
 		}
 		server.secrets = secrets
-		return &server, nil
 	default:
 		return nil, fmt.Errorf("invalid source")
 	}
+
+	if pollInterval > 0 {
+		// derive a child context so Close can stop polling independently of
+		// the caller's context (which may be context.Background()).
+		pollCtx, cancel := context.WithCancel(ctx)
+		server.cancel = cancel
+		go server.poll(pollCtx, pollInterval)
+	}
+
+	return server, nil
 }
 
-// Close releases the server's background resources (the nonce-cache sweeper).
-// The Server must not be used after Close.
+// Close releases the server's background resources: the registry poll
+// goroutine (if any) and the nonce-cache sweeper. The Server must not be used
+// after Close.
 func (s *Server) Close() {
+	if s.cancel != nil {
+		s.cancel()
+	}
 	s.seen.close()
 }
 
+// poll refreshes the registry on a fixed interval until ctx is cancelled.
+func (s *Server) poll(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			entries, err := s.reg.Entries()
+			if err != nil {
+				log.Error("registry poll failed", "error", err)
+				continue
+			}
+			s.mu.Lock()
+			s.entries = entries
+			s.mu.Unlock()
+			log.Debug("registry refreshed", "entries", len(entries))
+		}
+	}
+}
+
+// registrySnapshot returns a point-in-time copy of the registry.
+func (s *Server) registrySnapshot() []RegEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]RegEntry, len(s.entries))
+	copy(out, s.entries)
+	return out
+}
+
+// Handler is the HTTP handler for the locket secret server.
+// GET returns the server's RSA public encryption key.
+// POST accepts an encrypted, signed secret request and returns
+// the encrypted secret value.
 func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 	id := uuid.New().String()
 	log.Info("received request",
@@ -154,172 +275,182 @@ func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
 	)
 	switch r.Method {
 	case http.MethodOptions:
-		w.Header().Set("Allow", fmt.Sprintf("%s, %s", http.MethodGet, http.MethodPost))
+		w.Header().Set("Allow", fmt.Sprintf(
+			"%s, %s", http.MethodGet, http.MethodPost,
+		))
 		return
 	case http.MethodGet:
 		w.Header().Set("Content-Type", "text/plain")
 		w.Write([]byte(s.keyRsaPublic))
 		return
 	case http.MethodPost:
-		var request kvRequest
-		// log.Debug("decoding request", "body", r.Body)
-		err := json.NewDecoder(r.Body).Decode(&request)
-		if err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		log.Debug("request",
-			"payload", request.Payload,
-			"client_pubkey", request.ClientPubKey,
-			"signature", request.PayloadSignature,
-			"request_id", id,
-		)
-		payload, err := decryptRSA(s.keyRsaPrivate, request.Payload)
-		if err != nil {
-			log.Error("decrypt payload", "request_id", id, "error", err)
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		log.Debug("request payload decrypted", "request_id", id)
-
-		// require from CIDR range DefaultAllowCIDR
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			log.Error("split host port", "request_id", id, "error", err)
-			// maybe a 5xx, but probably only because of malformed host addr
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		clientIP := net.ParseIP(ip)
-		_, cidr, err := net.ParseCIDR(Defaults.AllowCIDR)
-		if err != nil {
-			log.Error("parse CIDR", "request_id", id, "error", err)
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		if !cidr.Contains(clientIP) {
-			log.Warn("IP rejected",
-				"request_id", id,
-				"ip", r.RemoteAddr,
-				"allowCIDR", Defaults.AllowCIDR,
-			)
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		log.Debug("IP allowed",
-			"request_id", id,
-			"ip", r.RemoteAddr,
-			"allowCIDR", Defaults.AllowCIDR,
-		)
-
-		// a nonce is required to detect replays
-		if request.Nonce == "" {
-			log.Warn("request missing nonce", "request_id", id)
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-
-		// reject stale or future-dated requests to bound replay
-		skew := time.Since(time.Unix(request.Timestamp, 0))
-		if skew < 0 {
-			skew = -skew
-		}
-		if skew > Defaults.MaxClockSkew {
-			log.Warn("request timestamp outside allowed window",
-				"request_id", id,
-				"skew", skew,
-				"max", Defaults.MaxClockSkew,
-			)
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		// verify signature against registry; the signed message binds the
-		// client pubkey, timestamp, and nonce so a captured request cannot be
-		// replayed with a substituted ClientPubKey to redirect the secret.
-		var matches bool
-		var verifiedService string
-		message := requestMessage(payload, request.ClientPubKey, request.Timestamp, request.Nonce)
-		log.Debug("verifying signature", "request_id", id)
-		for _, svc := range s.registry {
-			match, err := verifyEd25519(svc.KeyPub, message, request.PayloadSignature)
-			if err != nil {
-				log.Error("verify signature", "request_id", id, "error", err)
-				continue
-			}
-			if match {
-				matches = true
-				verifiedService = svc.Name
-				break
-			}
-		}
-		if !matches {
-			log.Error("signature mismatch", "request_id", id)
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		} else {
-			log.Debug("signature verified",
-				"service", verifiedService,
-				"request_id", id,
-			)
-		}
-
-		// reject replays: a nonce is valid only until a replay could no longer
-		// pass the freshness check above. Checked after signature verification
-		// so unauthenticated requests cannot fill the cache.
-		expiry := time.Unix(request.Timestamp, 0).Add(Defaults.MaxClockSkew)
-		if s.seen.observe(request.Nonce, expiry) {
-			log.Warn("replayed request rejected",
-				"service", verifiedService,
-				"request_id", id,
-			)
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		log.Debug("secrets for service", "service", verifiedService, "secrets_qty", len(s.secrets))
-		secrets, ok := s.secrets[strings.ToLower(verifiedService)]
-		if !ok {
-			log.Warn("service not found in registry, check case sensitivity (expects lower)",
-				"service_requesting", verifiedService,
-				"request_id", id,
-			)
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		value, ok := secrets[payload]
-		if !ok {
-			log.Warn("secret not found", "service", verifiedService, "key", payload, "request_id", id)
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-
-		ecryptedSecret, err := encryptRSA(request.ClientPubKey, value)
-		if err != nil {
-			log.Error("encrypt secret", "request_id", id, "error", err)
-			http.Error(w, "server error", http.StatusInternalServerError)
-			return
-		}
-		response := kvResponse{
-			Payload: ecryptedSecret,
-		}
-		// header must be set before the body is written to take effect
-		w.Header().Set("Content-Type", "application/json")
-		err = json.NewEncoder(w).Encode(response)
-		if err != nil {
-			log.Error("encode response", "request_id", id, "error", err)
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		log.Info("sending secret",
-			"service", verifiedService,
-			"name", payload,
-			"ip", r.RemoteAddr,
-			"request_id", id,
-		)
+		s.handlePost(w, r, id)
 	default:
-		log.Warn("method not allowed", "method", r.Method, "request_id", id, "ip", r.RemoteAddr)
+		log.Warn("method not allowed",
+			"method", r.Method,
+			"request_id", id,
+			"ip", r.RemoteAddr,
+		)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handlePost processes an encrypted secret request.
+func (s *Server) handlePost(
+	w http.ResponseWriter, r *http.Request, id string,
+) {
+	if err := s.allow(r); err != nil {
+		log.Warn("request denied",
+			"request_id", id,
+			"ip", r.RemoteAddr,
+			"error", err,
+		)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	const maxBody = 1 << 20
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+
+	var request kvRequest
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			http.Error(w,
+				"request entity too large",
+				http.StatusRequestEntityTooLarge,
+			)
+			return
+		}
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	log.Debug("request",
+		"payload", request.Payload,
+		"client_pubkey", request.ClientPubKey,
+		"signature", request.PayloadSignature,
+		"request_id", id,
+	)
+
+	payload, err := decryptRSA(s.keyRsaPrivate, request.Payload)
+	if err != nil {
+		log.Error("decrypt payload",
+			"request_id", id, "error", err,
+		)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	log.Debug("request payload decrypted", "request_id", id)
+
+	// a nonce is required to detect replays
+	if request.Nonce == "" {
+		log.Warn("request missing nonce", "request_id", id)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	// reject stale or future-dated requests to bound replay
+	skew := time.Since(time.Unix(request.Timestamp, 0))
+	if skew < 0 {
+		skew = -skew
+	}
+	if skew > Defaults.MaxClockSkew {
+		log.Warn("request timestamp outside allowed window",
+			"request_id", id,
+			"skew", skew,
+			"max", Defaults.MaxClockSkew,
+		)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	// verify signature against registry; the signed message binds the client
+	// pubkey, timestamp, and nonce so a captured request cannot be replayed
+	// with a substituted ClientPubKey to redirect the secret.
+	registry := s.registrySnapshot()
+	var verifiedService string
+	message := requestMessage(
+		payload, request.ClientPubKey, request.Timestamp, request.Nonce,
+	)
+	for _, svc := range registry {
+		match, err := verifyEd25519(
+			svc.KeyPub, message, request.PayloadSignature,
+		)
+		if err != nil {
+			log.Error("verify signature",
+				"request_id", id, "error", err,
+			)
+			continue
+		}
+		if match {
+			verifiedService = svc.Name
+			break
+		}
+	}
+	if verifiedService == "" {
+		log.Error("signature mismatch", "request_id", id)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	log.Debug("signature verified",
+		"service", verifiedService, "request_id", id,
+	)
+
+	// reject replays: a nonce is valid only until a replay could no longer
+	// pass the freshness check above. Checked after signature verification
+	// so unauthenticated requests cannot fill the cache.
+	expiry := time.Unix(request.Timestamp, 0).Add(Defaults.MaxClockSkew)
+	if s.seen.observe(request.Nonce, expiry) {
+		log.Warn("replayed request rejected",
+			"service", verifiedService,
+			"request_id", id,
+		)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	secrets, ok := s.secrets[strings.ToLower(verifiedService)]
+	if !ok {
+		log.Warn("service not found, check case (expects lower)",
+			"service", verifiedService,
+			"request_id", id,
+		)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	value, ok := secrets[payload]
+	if !ok {
+		log.Warn("secret not found",
+			"service", verifiedService,
+			"key", payload,
+			"request_id", id,
+		)
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	encrypted, err := encryptRSA(request.ClientPubKey, value)
+	if err != nil {
+		log.Error("encrypt secret",
+			"request_id", id, "error", err,
+		)
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(kvResponse{Payload: encrypted})
+	if err != nil {
+		log.Error("encode response",
+			"request_id", id, "error", err,
+		)
+		return
+	}
+	log.Info("sending secret",
+		"service", verifiedService,
+		"name", payload,
+		"ip", r.RemoteAddr,
+		"request_id", id,
+	)
 }

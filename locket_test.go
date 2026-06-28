@@ -1,11 +1,12 @@
 package locket
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,24 +18,16 @@ func TestE2E(t *testing.T) {
 	pub, priv, err := NewPairEd25519()
 	require.NoError(t, err)
 
-	reg := []RegEntry{{
-		Name:   "SERVICE1",
-		KeyPub: pub,
-	}}
-	testReg := path.Join("example", "testreg.yml")
-	err = WriteRegistry(testReg, reg)
+	fileReg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
+	err = fileReg.Upsert(RegEntry{Name: "SERVICE1", KeyPub: pub})
 	require.NoError(t, err)
 
 	source := Dotenv{
 		ServiceSecrets: testServiceMap,
-		Path:           path.Join("example", ".env"),
+		Path:           filepath.Join("example", ".env"),
 	}
-	registry, err := ReadRegistryFile(testReg)
-	require.NoError(t, err)
-	require.NotNil(t, registry)
-	require.Greater(t, len(registry), 0)
 
-	server, err := NewServer(source, registry)
+	server, err := NewServer(context.Background(), source, fileReg, 0, nil)
 	require.NoError(t, err)
 	defer server.Close()
 
@@ -51,9 +44,8 @@ func TestE2E(t *testing.T) {
 	text := MarshalDotenv(envVars)
 	t.Logf("formatted env vars: %s", text)
 	// write the env vars to a file
-	f, err := os.CreateTemp("example", "temp-*.env")
+	f, err := os.CreateTemp(t.TempDir(), "temp-*.env")
 	require.NoError(t, err)
-	defer os.Remove(f.Name())
 	_, err = f.WriteString(text)
 	require.NoError(t, err)
 	err = f.Close()

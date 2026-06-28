@@ -20,6 +20,12 @@ type defaults struct {
 	MaxClockSkew time.Duration // max client/server clock difference before a request is rejected
 }
 
+// PathRegistry is the API endpoint for registry operations.
+//   - GET: list all entries
+//   - POST: upsert an entry (RegEntry JSON body)
+//   - DELETE: remove an entry (RegEntry JSON body with name)
+var PathRegistry = "/locket/registry"
+
 // map[serviceName]keyPrivateSigning
 type KeysPrivateSigning map[string]string
 

@@ -1,0 +1,160 @@
+package locket
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"time"
+)
+
+// RemoteRegistry is a Registry backed by an HTTP API.
+// URL is the base URL (e.g. "http://api:8888") to which
+// PathRegistry is appended for all operations.
+// Token, if set, is sent as an X-Auth-Token header.
+type RemoteRegistry struct {
+	URL    string
+	Token  string
+	Client *http.Client
+}
+
+// client returns the configured HTTP client, or a default with timeout.
+func (r RemoteRegistry) client() *http.Client {
+	if r.Client != nil {
+		return r.Client
+	}
+	return &http.Client{Timeout: 10 * time.Second}
+}
+
+// endpoint returns the full URL to the registry API,
+// safely joining the base URL and PathRegistry. It validates
+// that r.URL is an absolute URL with scheme and host.
+func (r RemoteRegistry) endpoint() (string, error) {
+	joined, err := url.JoinPath(r.URL, PathRegistry)
+	if err != nil {
+		return "", fmt.Errorf("join url: %w", err)
+	}
+	u, err := url.Parse(joined)
+	if err != nil {
+		return "", fmt.Errorf("parse url: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf(
+			"invalid base URL %q: missing scheme or host", r.URL,
+		)
+	}
+	return joined, nil
+}
+
+// Entries fetches all authorized clients from the remote API.
+func (r RemoteRegistry) Entries() ([]RegEntry, error) {
+	endpoint, err := r.endpoint()
+	if err != nil {
+		return nil, fmt.Errorf("endpoint: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("new request: %w", err)
+	}
+	r.setHeaders(req)
+
+	resp, err := r.client().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("status %s", resp.Status)
+	}
+
+	var entries []RegEntry
+	err = json.NewDecoder(resp.Body).Decode(&entries)
+	if err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	return entries, nil
+}
+
+// Upsert creates or updates an authorized client via the remote API.
+func (r RemoteRegistry) Upsert(entry RegEntry) error {
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+
+	endpoint, err := r.endpoint()
+	if err != nil {
+		return fmt.Errorf("endpoint: %w", err)
+	}
+	req, err := http.NewRequest(
+		http.MethodPost, endpoint, bytes.NewReader(b),
+	)
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
+	r.setHeaders(req)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := r.client().Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("status %s", resp.Status)
+	}
+	return nil
+}
+
+// Delete removes an authorized client by name via the remote API.
+func (r RemoteRegistry) Delete(name string) error {
+	b, err := json.Marshal(RegEntry{Name: name})
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+
+	endpoint, err := r.endpoint()
+	if err != nil {
+		return fmt.Errorf("endpoint: %w", err)
+	}
+	req, err := http.NewRequest(
+		http.MethodDelete, endpoint, bytes.NewReader(b),
+	)
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
+	r.setHeaders(req)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := r.client().Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("status %s", resp.Status)
+	}
+	return nil
+}
+
+// Register generates a new ed25519 signing keypair, upserts the
+// public key via the remote API, and returns the keypair.
+func (r RemoteRegistry) Register(name string) (string, string, error) {
+	pub, priv, err := NewPairEd25519()
+	if err != nil {
+		return "", "", fmt.Errorf("generate key pair: %w", err)
+	}
+	err = r.Upsert(RegEntry{Name: name, KeyPub: pub})
+	if err != nil {
+		return "", "", fmt.Errorf("upsert: %w", err)
+	}
+	return pub, priv, nil
+}
+
+// setHeaders applies auth headers to the request.
+func (r RemoteRegistry) setHeaders(req *http.Request) {
+	if r.Token != "" {
+		req.Header.Set("X-Auth-Token", r.Token)
+	}
+}

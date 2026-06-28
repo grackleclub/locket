@@ -2,10 +2,13 @@ package locket
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,18 +23,20 @@ const (
 // newTestServer builds a server backed by the example .env and a single
 // registered service, returning the running test server, the underlying
 // *Server (for its encryption pubkey), and the service's ed25519 signing keys.
-// No files are written, so example/testreg.yml is left untouched.
+// The registry lives in a temp dir so no tracked fixtures are touched.
 func newTestServer(t *testing.T) (*httptest.Server, *Server, string) {
 	t.Helper()
 	pub, priv, err := NewPairEd25519()
 	require.NoError(t, err)
 
-	registry := []RegEntry{{Name: "SERVICE1", KeyPub: pub}}
+	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
+	require.NoError(t, reg.Upsert(RegEntry{Name: "SERVICE1", KeyPub: pub}))
+
 	source := Dotenv{
 		Path:           testEnvFile,
 		ServiceSecrets: testServiceMap,
 	}
-	server, err := NewServer(source, registry)
+	server, err := NewServer(context.Background(), source, reg, 0, nil)
 	require.NoError(t, err)
 	t.Cleanup(server.Close)
 
@@ -136,14 +141,16 @@ func TestHandlerRejectsPubkeySubstitution(t *testing.T) {
 // bug: a fully valid request from outside the allowed CIDR must be blocked and
 // must not leak the secret.
 func TestHandlerRejectsOutOfCIDR(t *testing.T) {
-	ts, server, signingPriv := newTestServer(t)
-	clientPub, clientPriv, err := newPairRSA(Defaults.BitsizeRSA)
-	require.NoError(t, err)
-
 	// test requests originate from 127.0.0.1; exclude it from the allowlist.
+	// The allow policy is captured at construction, so set this before
+	// newTestServer builds the server.
 	prev := Defaults.AllowCIDR
 	Defaults.AllowCIDR = "10.0.0.0/24"
 	t.Cleanup(func() { Defaults.AllowCIDR = prev })
+
+	ts, server, signingPriv := newTestServer(t)
+	clientPub, clientPriv, err := newPairRSA(Defaults.BitsizeRSA)
+	require.NoError(t, err)
 
 	req := craftRequest(t, server.keyRsaPublic, signingPriv, testSecretName, clientPub, time.Now().Unix())
 	resp, body := postRequest(t, ts.URL, req)
@@ -167,6 +174,51 @@ func TestHandlerRejectsReplay(t *testing.T) {
 	resp2, body2 := postRequest(t, ts.URL, req)
 	require.Equal(t, http.StatusForbidden, resp2.StatusCode)
 	assertSecretNotLeaked(t, body2, clientPriv)
+}
+
+// countingRegistry records how many times Entries is called, to verify the
+// poll goroutine's lifecycle.
+type countingRegistry struct {
+	mu    sync.Mutex
+	count int
+}
+
+func (c *countingRegistry) Entries() ([]RegEntry, error) {
+	c.mu.Lock()
+	c.count++
+	c.mu.Unlock()
+	return nil, nil
+}
+func (c *countingRegistry) Upsert(RegEntry) error { return nil }
+func (c *countingRegistry) Delete(string) error   { return nil }
+func (c *countingRegistry) Register(string) (string, string, error) {
+	return "", "", nil
+}
+func (c *countingRegistry) calls() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.count
+}
+
+// TestServerCloseStopsPoll is the regression test for the lifecycle gap: Close
+// must stop the registry poll goroutine even when the server was created with a
+// non-cancelable context.
+func TestServerCloseStopsPoll(t *testing.T) {
+	reg := &countingRegistry{}
+	source := Dotenv{Path: testEnvFile, ServiceSecrets: testServiceMap}
+	interval := 5 * time.Millisecond
+
+	server, err := NewServer(context.Background(), source, reg, interval, nil)
+	require.NoError(t, err)
+
+	time.Sleep(40 * time.Millisecond)
+	require.Greater(t, reg.calls(), 1, "poll should have run several times")
+
+	server.Close()
+	time.Sleep(20 * time.Millisecond) // let any in-flight tick finish
+	stopped := reg.calls()
+	time.Sleep(40 * time.Millisecond) // several more intervals
+	require.Equal(t, stopped, reg.calls(), "poll must not run after Close")
 }
 
 // TestHandlerRejectsStaleTimestamp is the regression test for the replay

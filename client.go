@@ -37,7 +37,7 @@ type kvRequest struct {
 // Pre-computed ed25519 signing keys (via NewPairEd25519() or any other means)
 // must be passed to a new client, with the expectation that the public key
 // be made available to the server to facilitate authentication.
-// see: WriteRegistry() for details
+// see: FileRegistry.Register() for details
 func NewClient(serverURL, keyPub, keyPriv string) (*Client, error) {
 	rsaPublic, rsaPrivate, err := newPairRSA(Defaults.BitsizeRSA)
 	if err != nil {
