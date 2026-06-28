@@ -27,9 +27,11 @@ jobs:
         id: ver
         run: |
           msg=$(git log -1 --pretty=%B)
-          if echo "$msg" | grep -qiF '[skip release]'; then
+          # match only when [skip release] is on a line by itself, so a prose
+          # mention in the commit body doesn't accidentally skip the release.
+          if echo "$msg" | grep -qixF '[skip release]'; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "commit requests [skip release]; skipping"
+            echo "commit requests skip on its own line; skipping"
             exit 0
           fi
 
