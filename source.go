@@ -65,7 +65,7 @@ func (e Env) Load() (map[string]Secrets, error) {
 						"value", strings.Repeat("*", len(value)+jitter),
 					)
 					nameLower := strings.ToLower(serviceName)
-					if _, ok := parent[serviceName]; !ok {
+					if _, ok := parent[nameLower]; !ok {
 						// if service not yet in parent, add it
 						parent[nameLower] = make(Secrets)
 					}
@@ -226,7 +226,8 @@ func (o Onepass) Load() (map[string]Secrets, error) {
 				for _, secret := range serviceDetail.Fields {
 					serviceSecrects[secret.Title] = secret.Value
 				}
-				allSecrets[service.Title] = serviceSecrects
+				// server looks up services by lowercased name; key to match
+				allSecrets[strings.ToLower(service.Title)] = serviceSecrects
 				log.Debug("loaded secrets for service", "qty", len(serviceSecrects), "service", service.Title)
 			}
 		}

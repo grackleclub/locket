@@ -36,6 +36,7 @@ func TestE2E(t *testing.T) {
 
 	server, err := NewServer(source, registry)
 	require.NoError(t, err)
+	defer server.Close()
 
 	handler := httptest.NewServer(http.HandlerFunc(server.Handler))
 	defer handler.Close()
