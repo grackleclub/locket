@@ -39,28 +39,37 @@ func TestFileRegistryReadWrite(t *testing.T) {
 	}
 }
 
-// TestFileRegistryNoDuplicate is the regression test for name normalization in
-// Upsert: re-registering a service (including with a .env suffix that Upsert
-// strips) must update the existing entry rather than append a duplicate.
-func TestFileRegistryNoDuplicate(t *testing.T) {
+// TestFileRegistryUpsertDedup verifies Upsert dedups on the exact name
+// (verbatim, case-sensitive) per the cloud registry contract: re-registering
+// the same name updates the entry in place, while a different name (e.g. one
+// with a .env suffix) is a distinct entry — Upsert does not normalize.
+func TestFileRegistryUpsertDedup(t *testing.T) {
 	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
 
-	_, _, err := reg.Register("svc.env")
+	pub1, _, err := reg.Register("svc")
 	require.NoError(t, err)
 
-	pub2, _, err := reg.Register("svc.env")
+	// re-registering the exact name updates in place (no duplicate)
+	pub2, _, err := reg.Register("svc")
 	require.NoError(t, err)
 
-	// the plain name normalizes to the same entry too
-	_, _, err = reg.Register("svc")
+	// a different, un-normalized name is a distinct entry
+	_, _, err = reg.Register("svc.env")
 	require.NoError(t, err)
 
 	entries, err := reg.Entries()
 	require.NoError(t, err)
-	require.Len(t, entries, 1, "re-registering the same service must not duplicate")
-	require.Equal(t, "svc", entries[0].Name)
-	// last write wins on the key
-	require.NotEqual(t, pub2, entries[0].KeyPub)
+	require.Len(t, entries, 2,
+		"exact-name re-register dedups; a distinct name does not")
+
+	byName := make(map[string]string, len(entries))
+	for _, e := range entries {
+		byName[e.Name] = e.KeyPub
+	}
+	require.Contains(t, byName, "svc")
+	require.Contains(t, byName, "svc.env")
+	require.Equal(t, pub2, byName["svc"], "last write wins for the exact name")
+	require.NotEqual(t, pub1, pub2)
 }
 
 func TestFileRegistryRegister(t *testing.T) {

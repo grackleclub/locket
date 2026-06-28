@@ -3,8 +3,6 @@ package locket
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -57,12 +55,10 @@ func (f FileRegistry) Entries() ([]RegEntry, error) {
 }
 
 // Upsert inserts or updates a client entry in the YAML file.
-// If the file does not exist, it is created.
+// If the file does not exist, it is created. The name is stored verbatim
+// (exact-match, case-sensitive) to match the RemoteRegistry / cloud contract;
+// derive a clean service name before calling if needed.
 func (f FileRegistry) Upsert(entry RegEntry) error {
-	entry.Name = strings.TrimSuffix(
-		filepath.Base(entry.Name), ".env",
-	)
-
 	var entries []RegEntry
 	_, err := os.Stat(f.Path)
 	switch {
