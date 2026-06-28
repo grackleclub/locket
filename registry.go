@@ -31,6 +31,7 @@ func WriteRegistry(path string, data []RegEntry) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
+	defer f.Close()
 
 	for i, item := range data {
 		data[i].Name = strings.TrimSuffix(filepath.Base(item.Name), ".env")
@@ -85,6 +86,10 @@ func Register(name string, registryPath string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("generate key pair: %w", err)
 	}
+
+	// match the normalization WriteRegistry applies, so re-registering the same
+	// service updates its entry rather than appending a duplicate.
+	name = strings.TrimSuffix(filepath.Base(name), ".env")
 
 	var registry []RegEntry
 	_, err = os.Stat(registryPath)

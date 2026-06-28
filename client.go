@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 // Client makes requests to a locket server, and must know the server address.
@@ -24,8 +25,10 @@ type Client struct {
 // kvRequest is the request format for the client to send to the server.
 type kvRequest struct {
 	Payload          string `json:"payload"`       // key for which cilent requests a value
-	PayloadSignature string `json:"signature"`     // ed25519 signature of payload
-	ClientPubKey     string `json:"client_pubkey"` // public key used to encrypt payload
+	PayloadSignature string `json:"signature"`     // ed25519 signature over requestMessage()
+	ClientPubKey     string `json:"client_pubkey"` // public key used to encrypt the response
+	Timestamp        int64  `json:"timestamp"`     // unix seconds, signed to bound replay
+	Nonce            string `json:"nonce"`         // single-use random value, signed to block replay
 }
 
 // NewClient creates a new client, fetches the server's encryption public key,
@@ -94,9 +97,19 @@ func (c *Client) FetchSecret(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("encrypt: %w", err)
 	}
+	ts := time.Now().Unix()
+	nonce, err := newNonce()
+	if err != nil {
+		return "", fmt.Errorf("generate nonce: %w", err)
+	}
 	request.Payload = cypher
 	request.ClientPubKey = c.keyRsaPublic
-	sig, err := signEd25519(c.keyEd25519Private, name)
+	request.Timestamp = ts
+	request.Nonce = nonce
+	sig, err := signEd25519(
+		c.keyEd25519Private,
+		requestMessage(name, c.keyRsaPublic, ts, nonce),
+	)
 	if err != nil {
 		return "", fmt.Errorf("sign: %w", err)
 	}
