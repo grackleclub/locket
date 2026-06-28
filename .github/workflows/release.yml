@@ -1,0 +1,63 @@
+name: Release
+
+# Auto-increment a semver tag and cut a GitHub release on every push to main.
+# Bump level is patch by default; include "#minor" or "#major" in the commit
+# message (e.g. the squash-merge commit) to bump those instead. Include
+# "[skip release]" to skip entirely.
+on:
+  push:
+    branches: [main]
+
+# Serialize releases so two quick merges can't race on the same tag.
+concurrency: release
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need all tags to find the latest
+
+      - name: Compute next version
+        id: ver
+        run: |
+          msg=$(git log -1 --pretty=%B)
+          if echo "$msg" | grep -qiF '[skip release]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "commit requests [skip release]; skipping"
+            exit 0
+          fi
+
+          latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          latest=${latest:-v0.0.0}
+          echo "latest tag: $latest"
+
+          ver=${latest#v}
+          IFS=. read -r major minor patch <<<"$ver"
+
+          if echo "$msg" | grep -qiE '#major'; then
+            major=$((major + 1)); minor=0; patch=0
+          elif echo "$msg" | grep -qiE '#minor'; then
+            minor=$((minor + 1)); patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
+          next="v${major}.${minor}.${patch}"
+          echo "next version: $next"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        if: steps.ver.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.ver.outputs.next }}" \
+            --target "${{ github.sha }}" \
+            --title "${{ steps.ver.outputs.next }}" \
+            --generate-notes
