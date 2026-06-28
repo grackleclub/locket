@@ -68,6 +68,29 @@ func TestLoadEnv(t *testing.T) {
 	}
 }
 
+// TestLoadEnvMixedCaseService is the regression test for the Env.Load existence
+// check: a mixed-case service name must retain every one of its secrets, not
+// just the last one loaded (the bug reset the service map on each secret because
+// it checked the original-case key against a lowercase-keyed map).
+func TestLoadEnvMixedCaseService(t *testing.T) {
+	secretNames := []string{"REGRESSION_A", "REGRESSION_B", "REGRESSION_C"}
+	for i, name := range secretNames {
+		require.NoError(t, os.Setenv(name, fmt.Sprintf("v%d", i)))
+		t.Cleanup(func() { os.Unsetenv(name) })
+	}
+
+	source := Env{
+		ServiceSecrets: map[string][]string{"MixedSvc": secretNames},
+	}
+	secrets, err := source.Load()
+	require.NoError(t, err)
+
+	// server looks services up lowercased
+	svc, ok := secrets["mixedsvc"]
+	require.True(t, ok, "mixed-case service should be present (lowercased)")
+	require.Len(t, svc, len(secretNames), "all secrets for the service must be retained")
+}
+
 // testing requires a file (part of .git) to be loaded into env
 // to then test env loading
 func putFileToEnv() error {
