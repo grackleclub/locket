@@ -42,6 +42,70 @@ func AllowCIDR(cidr string) AllowRequestFunc {
 	}
 }
 
+// nonceCache tracks request nonces so the server can reject exact replays
+// within the accepted clock-skew window. A background sweeper evicts entries
+// once a replay of that request could no longer pass the timestamp freshness
+// check, keeping the map bounded without scanning on the request path.
+type nonceCache struct {
+	mu       sync.Mutex
+	seen     map[string]time.Time // nonce -> expiry
+	stop     chan struct{}
+	stopOnce sync.Once
+}
+
+// newNonceCache returns a cache whose sweeper evicts expired nonces every
+// interval until close is called.
+func newNonceCache(interval time.Duration) *nonceCache {
+	c := &nonceCache{
+		seen: make(map[string]time.Time),
+		stop: make(chan struct{}),
+	}
+	go c.sweep(interval)
+	return c
+}
+
+// observe records nonce with the given expiry and reports whether it was
+// already present (i.e. a replay). Eviction happens out of band in sweep; a
+// not-yet-swept expired nonce is harmless since stale requests are already
+// rejected by the freshness check before reaching here.
+func (c *nonceCache) observe(nonce string, expiry time.Time) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.seen[nonce]; ok {
+		return true
+	}
+	c.seen[nonce] = expiry
+	return false
+}
+
+// sweep periodically deletes expired nonces until the cache is closed.
+func (c *nonceCache) sweep(interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.stop:
+			return
+		case now := <-ticker.C:
+			c.mu.Lock()
+			for n, exp := range c.seen {
+				if now.After(exp) {
+					delete(c.seen, n)
+				}
+			}
+			c.mu.Unlock()
+		}
+	}
+}
+
+// close stops the sweeper goroutine. Safe to call more than once.
+func (c *nonceCache) close() {
+	c.stopOnce.Do(func() { close(c.stop) })
+}
+
 // Server serves secrets to authenticated clients over HTTP.
 // It validates client requests against a Registry of authorized
 // signing keys, refreshing the registry on a configurable interval.
@@ -53,6 +117,7 @@ type Server struct {
 	allow         AllowRequestFunc
 	keyRsaPublic  string
 	keyRsaPrivate string
+	seen          *nonceCache
 }
 
 // kvResponse is the server's encrypted secret response.
@@ -99,6 +164,7 @@ func NewServer(
 		allow:         allow,
 		keyRsaPublic:  rsaPublic,
 		keyRsaPrivate: rsaPrivate,
+		seen:          newNonceCache(Defaults.MaxClockSkew),
 	}
 
 	switch opts := opts.(type) {
@@ -139,6 +205,12 @@ func NewServer(
 	}
 
 	return server, nil
+}
+
+// Close releases the server's background resources (the nonce-cache sweeper).
+// The Server must not be used after Close.
+func (s *Server) Close() {
+	s.seen.close()
 }
 
 // poll refreshes the registry on a fixed interval until ctx is cancelled.
@@ -251,23 +323,47 @@ func (s *Server) handlePost(
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	log.Debug("request payload decrypted",
-		"payload", payload, "request_id", id,
-	)
+	log.Debug("request payload decrypted", "request_id", id)
 
-	// verify signature against registry
+	// a nonce is required to detect replays
+	if request.Nonce == "" {
+		log.Warn("request missing nonce", "request_id", id)
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	// reject stale or future-dated requests to bound replay
+	skew := time.Since(time.Unix(request.Timestamp, 0))
+	if skew < 0 {
+		skew = -skew
+	}
+	if skew > Defaults.MaxClockSkew {
+		log.Warn("request timestamp outside allowed window",
+			"request_id", id,
+			"skew", skew,
+			"max", Defaults.MaxClockSkew,
+		)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	// verify signature against registry; the signed message binds the client
+	// pubkey, timestamp, and nonce so a captured request cannot be replayed
+	// with a substituted ClientPubKey to redirect the secret.
 	registry := s.registrySnapshot()
 	var verifiedService string
+	message := requestMessage(
+		payload, request.ClientPubKey, request.Timestamp, request.Nonce,
+	)
 	for _, svc := range registry {
 		match, err := verifyEd25519(
-			svc.KeyPub, payload, request.PayloadSignature,
+			svc.KeyPub, message, request.PayloadSignature,
 		)
 		if err != nil {
 			log.Error("verify signature",
 				"request_id", id, "error", err,
 			)
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
+			continue
 		}
 		if match {
 			verifiedService = svc.Name
@@ -282,6 +378,19 @@ func (s *Server) handlePost(
 	log.Debug("signature verified",
 		"service", verifiedService, "request_id", id,
 	)
+
+	// reject replays: a nonce is valid only until a replay could no longer
+	// pass the freshness check above. Checked after signature verification
+	// so unauthenticated requests cannot fill the cache.
+	expiry := time.Unix(request.Timestamp, 0).Add(Defaults.MaxClockSkew)
+	if s.seen.observe(request.Nonce, expiry) {
+		log.Warn("replayed request rejected",
+			"service", verifiedService,
+			"request_id", id,
+		)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 
 	secrets, ok := s.secrets[strings.ToLower(verifiedService)]
 	if !ok {

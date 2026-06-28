@@ -3,18 +3,21 @@ package locket
 import (
 	"log/slog"
 	"testing"
+	"time"
 
 	logger "github.com/grackleclub/log"
 )
 
 var Defaults = defaults{
-	AllowCIDR:  "10.0.0.0/24",
-	BitsizeRSA: 2048,
+	AllowCIDR:    "10.0.0.0/24",
+	BitsizeRSA:   2048,
+	MaxClockSkew: 30 * time.Second,
 }
 
 type defaults struct {
-	AllowCIDR  string // client requests from outside this CIDR are forbidden
-	BitsizeRSA int    // bit size passed to RSA creation for client and server encryption
+	AllowCIDR    string        // client requests from outside this CIDR are forbidden
+	BitsizeRSA   int           // bit size passed to RSA creation for client and server encryption
+	MaxClockSkew time.Duration // max client/server clock difference before a request is rejected
 }
 
 // PathRegistry is the API endpoint for registry operations.

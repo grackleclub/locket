@@ -3,6 +3,7 @@ package locket
 import (
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -36,6 +37,30 @@ func TestFileRegistryReadWrite(t *testing.T) {
 	for _, item := range items {
 		t.Logf("item: %v", item)
 	}
+}
+
+// TestFileRegistryNoDuplicate is the regression test for name normalization in
+// Upsert: re-registering a service (including with a .env suffix that Upsert
+// strips) must update the existing entry rather than append a duplicate.
+func TestFileRegistryNoDuplicate(t *testing.T) {
+	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
+
+	_, _, err := reg.Register("svc.env")
+	require.NoError(t, err)
+
+	pub2, _, err := reg.Register("svc.env")
+	require.NoError(t, err)
+
+	// the plain name normalizes to the same entry too
+	_, _, err = reg.Register("svc")
+	require.NoError(t, err)
+
+	entries, err := reg.Entries()
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "re-registering the same service must not duplicate")
+	require.Equal(t, "svc", entries[0].Name)
+	// last write wins on the key
+	require.NotEqual(t, pub2, entries[0].KeyPub)
 }
 
 func TestFileRegistryRegister(t *testing.T) {
