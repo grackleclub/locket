@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -173,6 +174,51 @@ func TestHandlerRejectsReplay(t *testing.T) {
 	resp2, body2 := postRequest(t, ts.URL, req)
 	require.Equal(t, http.StatusForbidden, resp2.StatusCode)
 	assertSecretNotLeaked(t, body2, clientPriv)
+}
+
+// countingRegistry records how many times Entries is called, to verify the
+// poll goroutine's lifecycle.
+type countingRegistry struct {
+	mu    sync.Mutex
+	count int
+}
+
+func (c *countingRegistry) Entries() ([]RegEntry, error) {
+	c.mu.Lock()
+	c.count++
+	c.mu.Unlock()
+	return nil, nil
+}
+func (c *countingRegistry) Upsert(RegEntry) error { return nil }
+func (c *countingRegistry) Delete(string) error   { return nil }
+func (c *countingRegistry) Register(string) (string, string, error) {
+	return "", "", nil
+}
+func (c *countingRegistry) calls() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.count
+}
+
+// TestServerCloseStopsPoll is the regression test for the lifecycle gap: Close
+// must stop the registry poll goroutine even when the server was created with a
+// non-cancelable context.
+func TestServerCloseStopsPoll(t *testing.T) {
+	reg := &countingRegistry{}
+	source := Dotenv{Path: testEnvFile, ServiceSecrets: testServiceMap}
+	interval := 5 * time.Millisecond
+
+	server, err := NewServer(context.Background(), source, reg, interval, nil)
+	require.NoError(t, err)
+
+	time.Sleep(40 * time.Millisecond)
+	require.Greater(t, reg.calls(), 1, "poll should have run several times")
+
+	server.Close()
+	time.Sleep(20 * time.Millisecond) // let any in-flight tick finish
+	stopped := reg.calls()
+	time.Sleep(40 * time.Millisecond) // several more intervals
+	require.Equal(t, stopped, reg.calls(), "poll must not run after Close")
 }
 
 // TestHandlerRejectsStaleTimestamp is the regression test for the replay

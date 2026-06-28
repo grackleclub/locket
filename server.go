@@ -118,6 +118,7 @@ type Server struct {
 	keyRsaPublic  string
 	keyRsaPrivate string
 	seen          *nonceCache
+	cancel        context.CancelFunc // stops the registry poll goroutine
 }
 
 // kvResponse is the server's encrypted secret response.
@@ -201,15 +202,23 @@ func NewServer(
 	}
 
 	if pollInterval > 0 {
-		go server.poll(ctx, pollInterval)
+		// derive a child context so Close can stop polling independently of
+		// the caller's context (which may be context.Background()).
+		pollCtx, cancel := context.WithCancel(ctx)
+		server.cancel = cancel
+		go server.poll(pollCtx, pollInterval)
 	}
 
 	return server, nil
 }
 
-// Close releases the server's background resources (the nonce-cache sweeper).
-// The Server must not be used after Close.
+// Close releases the server's background resources: the registry poll
+// goroutine (if any) and the nonce-cache sweeper. The Server must not be used
+// after Close.
 func (s *Server) Close() {
+	if s.cancel != nil {
+		s.cancel()
+	}
 	s.seen.close()
 }
 
