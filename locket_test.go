@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -18,15 +18,13 @@ func TestE2E(t *testing.T) {
 	pub, priv, err := NewPairEd25519()
 	require.NoError(t, err)
 
-	testReg := path.Join("example", "testreg.yml")
-	fileReg := FileRegistry{Path: testReg}
+	fileReg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
 	err = fileReg.Upsert(RegEntry{Name: "SERVICE1", KeyPub: pub})
 	require.NoError(t, err)
-	defer os.Remove(testReg)
 
 	source := Dotenv{
 		ServiceSecrets: testServiceMap,
-		Path:           path.Join("example", ".env"),
+		Path:           filepath.Join("example", ".env"),
 	}
 
 	server, err := NewServer(context.Background(), source, fileReg, 0, nil)
@@ -46,9 +44,8 @@ func TestE2E(t *testing.T) {
 	text := MarshalDotenv(envVars)
 	t.Logf("formatted env vars: %s", text)
 	// write the env vars to a file
-	f, err := os.CreateTemp("example", "temp-*.env")
+	f, err := os.CreateTemp(t.TempDir(), "temp-*.env")
 	require.NoError(t, err)
-	defer os.Remove(f.Name())
 	_, err = f.WriteString(text)
 	require.NoError(t, err)
 	err = f.Close()

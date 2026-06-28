@@ -1,8 +1,6 @@
 package locket
 
 import (
-	"os"
-	"path"
 	"path/filepath"
 	"testing"
 
@@ -21,9 +19,7 @@ var testRegistryItems = []RegEntry{
 }
 
 func TestFileRegistryReadWrite(t *testing.T) {
-	p := path.Join("example", "test-readwrite.yml")
-	reg := FileRegistry{Path: p}
-	defer os.Remove(p)
+	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
 
 	for _, item := range testRegistryItems {
 		err := reg.Upsert(item)
@@ -73,9 +69,7 @@ func TestFileRegistryUpsertDedup(t *testing.T) {
 }
 
 func TestFileRegistryRegister(t *testing.T) {
-	testRegistry := path.Join("example", "test-registry.yml")
-	reg := FileRegistry{Path: testRegistry}
-	defer os.Remove(testRegistry)
+	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
 
 	services := []string{"service A", "service B", "service C"}
 
@@ -108,9 +102,7 @@ func TestFileRegistryRegister(t *testing.T) {
 }
 
 func TestFileRegistryDelete(t *testing.T) {
-	testRegistry := path.Join("example", "test-delete.yml")
-	reg := FileRegistry{Path: testRegistry}
-	defer os.Remove(testRegistry)
+	reg := FileRegistry{Path: filepath.Join(t.TempDir(), "registry.yml")}
 
 	require.NoError(t, reg.Upsert(RegEntry{Name: "a", KeyPub: "k1"}))
 	require.NoError(t, reg.Upsert(RegEntry{Name: "b", KeyPub: "k2"}))

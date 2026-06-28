@@ -156,6 +156,14 @@ func NewServer(
 	log.Info("registry loaded", "entries", len(entries))
 
 	if allow == nil {
+		// validate up front so a bad Defaults.AllowCIDR fails fast here
+		// instead of silently rejecting every request with 403 later.
+		if _, _, err := net.ParseCIDR(Defaults.AllowCIDR); err != nil {
+			return nil, fmt.Errorf(
+				"invalid default allow CIDR %q: %w",
+				Defaults.AllowCIDR, err,
+			)
+		}
 		allow = AllowCIDR(Defaults.AllowCIDR)
 	}
 
